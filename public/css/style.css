@@ -1318,3 +1318,222 @@ input {
     bottom: 10px;
   }
 }
+
+
+/* MOBILE RETRO START MENU OVERRIDES */
+@media (max-width: 900px) {
+  .start-overlay {
+    padding: 22px 18px;
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    background: #d8d8d8;
+    backdrop-filter: none;
+  }
+
+  .menu-panel {
+    width: min(100%, 520px);
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+  }
+
+  .menu-shell {
+    gap: 20px;
+  }
+
+  .menu-screen-head,
+  .menu-subtitle,
+  .menu-desktop-layout {
+    display: none !important;
+  }
+
+  .menu-mobile-layout {
+    display: block;
+  }
+
+  .menu-title-stage {
+    gap: 10px;
+    padding-top: 10px;
+  }
+
+  .menu-title-row {
+    gap: 10px;
+  }
+
+  .menu-title-fruit {
+    font-size: clamp(26px, 6vw, 38px);
+    filter: none;
+  }
+
+  .menu-title {
+    font-size: clamp(46px, 11vw, 72px);
+    line-height: 0.95;
+    text-shadow: 0 3px 0 rgba(0,0,0,0.12);
+  }
+
+  .menu-mobile-home {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .menu-mobile-online {
+    display: none;
+    gap: 16px;
+    padding-top: 8px;
+  }
+
+  .start-overlay.mobile-online-open .menu-mobile-home {
+    display: none;
+  }
+
+  .start-overlay.mobile-online-open .menu-mobile-online {
+    display: grid;
+  }
+
+  .menu-mobile-btn {
+    min-height: 168px;
+    padding: 18px 16px;
+    border-radius: 22px;
+    box-shadow: none;
+    border: 0;
+    justify-items: center;
+    text-align: center;
+    align-content: center;
+    gap: 10px;
+  }
+
+  .menu-mobile-btn-single {
+    background: #c9f2b9;
+  }
+
+  .menu-mobile-btn-online {
+    background: #f7e0a5;
+  }
+
+  .menu-mobile-btn-settings {
+    background: #c7f2ee;
+    grid-column: 1 / -1;
+    min-height: 104px;
+    width: min(100%, 260px);
+    justify-self: center;
+  }
+
+  .menu-mobile-btn-top {
+    color: #243325;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+  }
+
+  .menu-mobile-btn-title {
+    font-family: "Arial Black", "Trebuchet MS", "Apple SD Gothic Neo", sans-serif;
+    font-size: clamp(30px, 7vw, 42px);
+    line-height: 1;
+    letter-spacing: -0.05em;
+    color: #222;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.35);
+  }
+
+  .menu-mobile-btn-sub {
+    color: #222;
+    font-size: 15px;
+    font-weight: 900;
+    opacity: 0.78;
+  }
+
+  .menu-mobile-btn-mark {
+    position: static;
+    transform: none;
+    font-size: 30px;
+    color: #1d8c46;
+    margin-top: 2px;
+  }
+
+  .menu-mobile-btn-settings .menu-mobile-btn-mark {
+    display: none;
+  }
+
+  .menu-mobile-online-head {
+    align-items: center;
+    gap: 10px;
+  }
+
+  .menu-mobile-back-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: none;
+  }
+
+  .menu-mobile-online-copy .menu-mode-top {
+    color: #3a9957;
+  }
+
+  .menu-mobile-online-title {
+    font-family: "Arial Black", "Trebuchet MS", "Apple SD Gothic Neo", sans-serif;
+    font-size: clamp(28px, 7vw, 40px);
+    letter-spacing: -0.04em;
+  }
+
+  .menu-mobile-online-card {
+    padding: 18px;
+    border-radius: 24px;
+    border: 0;
+    box-shadow: none;
+    background: rgba(255,255,255,0.9);
+  }
+
+  .input-label {
+    font-size: 15px;
+  }
+
+  .input,
+  .room-code-input {
+    padding: 15px 16px;
+    border-radius: 18px;
+    font-size: 18px;
+  }
+
+  .big-btn {
+    margin-top: 10px;
+    padding: 16px 18px;
+    border-radius: 18px;
+  }
+
+  .join-row {
+    grid-template-columns: minmax(0, 1fr) 118px;
+  }
+}
+
+@media (max-width: 540px) {
+  .start-overlay {
+    padding: 18px 14px;
+  }
+
+  .menu-mobile-home {
+    gap: 12px;
+  }
+
+  .menu-mobile-btn {
+    min-height: 150px;
+    padding: 16px 14px;
+    border-radius: 20px;
+  }
+
+  .menu-mobile-btn-title {
+    font-size: 28px;
+  }
+
+  .menu-mobile-btn-sub {
+    font-size: 14px;
+  }
+
+  .menu-mobile-btn-settings {
+    min-height: 92px;
+    width: min(100%, 220px);
+  }
+}
