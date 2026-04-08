@@ -1,3 +1,4 @@
+
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -10,8 +11,8 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const ROOM_PLAYER_LIMIT = 2;
 const GAME_DURATION = 120;
-const BOARD_ROWS = 9;
-const BOARD_COLS = 18;
+const ROWS = 14;
+const COLS = 14;
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -39,13 +40,13 @@ function createSeededRandom(seed) {
   };
 }
 
-function generateBoardFromSeed(seed, rows = BOARD_ROWS, cols = BOARD_COLS) {
+function generateBoardFromSeed(seed) {
   const rand = createSeededRandom(seed);
   const board = [];
 
-  for (let row = 0; row < rows; row += 1) {
+  for (let row = 0; row < ROWS; row += 1) {
     const rowData = [];
-    for (let col = 0; col < cols; col += 1) {
+    for (let col = 0; col < COLS; col += 1) {
       rowData.push({
         value: Math.floor(rand() * 9) + 1,
         removed: false
@@ -200,7 +201,7 @@ function maybeStartGame(room) {
   room.gameStarted = true;
   room.gameEnded = false;
   room.seed = Math.floor(Math.random() * 1000000000);
-  room.board = generateBoardFromSeed(room.seed, BOARD_ROWS, BOARD_COLS);
+  room.board = generateBoardFromSeed(room.seed);
   room.startedAt = Date.now();
   room.endsAt = room.startedAt + (GAME_DURATION * 1000);
 
@@ -217,8 +218,8 @@ function maybeStartGame(room) {
 
   io.to(room.code).emit("game:start", {
     roomCode: room.code,
-    rows: room.board.length,
-    cols: room.board[0]?.length || BOARD_COLS,
+    rows: ROWS,
+    cols: COLS,
     duration: GAME_DURATION,
     startedAt: room.startedAt,
     endsAt: room.endsAt,
@@ -461,13 +462,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const maxRowIndex = room.board.length - 1;
-    const maxColIndex = room.board[0]?.length ? room.board[0].length - 1 : BOARD_COLS - 1;
-
     const minRow = Math.max(0, Math.min(safeStart.row, safeEnd.row));
-    const maxRow = Math.min(maxRowIndex, Math.max(safeStart.row, safeEnd.row));
+    const maxRow = Math.min(ROWS - 1, Math.max(safeStart.row, safeEnd.row));
     const minCol = Math.max(0, Math.min(safeStart.col, safeEnd.col));
-    const maxCol = Math.min(maxColIndex, Math.max(safeStart.col, safeEnd.col));
+    const maxCol = Math.min(COLS - 1, Math.max(safeStart.col, safeEnd.col));
 
     const removedPositions = [];
     let sum = 0;
@@ -544,6 +542,6 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Fruit Box server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Fruit Box server running on http://localhost:${PORT}`);
 });
