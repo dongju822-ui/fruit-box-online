@@ -155,21 +155,29 @@
       <div class="settings-head">
         <div class="menu-badge settings-badge">SETTINGS</div>
         <h2>사운드 설정</h2>
-        <p>배경음과 삭제 효과음만 간단하게 조절할 수 있어요.</p>
+        <p>배경음악, 드래그 효과음, 사과 삭제 효과음을 각각 따로 조절할 수 있어요.</p>
       </div>
 
       <div class="settings-group">
         <div class="settings-row">
           <label for="bgmVolumeSlider">배경음악</label>
-          <strong id="bgmVolumeValue">38%</strong>
+          <strong id="bgmVolumeValue">40%</strong>
         </div>
         <input id="bgmVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
       </div>
 
       <div class="settings-group">
         <div class="settings-row">
-          <label for="clearVolumeSlider">삭제 효과음</label>
-          <strong id="clearVolumeValue">100%</strong>
+          <label for="dragVolumeSlider">드래그 효과음</label>
+          <strong id="dragVolumeValue">70%</strong>
+        </div>
+        <input id="dragVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
+      </div>
+
+      <div class="settings-group">
+        <div class="settings-row">
+          <label for="clearVolumeSlider">사과 삭제 효과음</label>
+          <strong id="clearVolumeValue">80%</strong>
         </div>
         <input id="clearVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
       </div>

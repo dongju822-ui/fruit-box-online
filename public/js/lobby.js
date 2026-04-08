@@ -50,8 +50,10 @@
       closeSettingsBtn: document.getElementById("closeSettingsBtn"),
       settingsOverlay: document.getElementById("settingsOverlay"),
       bgmVolumeSlider: document.getElementById("bgmVolumeSlider"),
+      dragVolumeSlider: document.getElementById("dragVolumeSlider"),
       clearVolumeSlider: document.getElementById("clearVolumeSlider"),
       bgmVolumeValue: document.getElementById("bgmVolumeValue"),
+      dragVolumeValue: document.getElementById("dragVolumeValue"),
       clearVolumeValue: document.getElementById("clearVolumeValue")
     };
 
@@ -96,11 +98,14 @@
     function syncSettingsUi() {
       const settings = App.audio.getSettings();
       const bgmPercent = Math.round(settings.bgmVolume * 100);
+      const dragPercent = Math.round(settings.dragVolume * 100);
       const clearPercent = Math.round(settings.clearVolume * 100);
 
       dom.bgmVolumeSlider.value = String(bgmPercent);
+      dom.dragVolumeSlider.value = String(dragPercent);
       dom.clearVolumeSlider.value = String(clearPercent);
       dom.bgmVolumeValue.textContent = `${bgmPercent}%`;
+      dom.dragVolumeValue.textContent = `${dragPercent}%`;
       dom.clearVolumeValue.textContent = `${clearPercent}%`;
     }
 
@@ -284,6 +289,17 @@
       App.audio.ensureAudio();
       App.audio.setBgmVolume(value);
       dom.bgmVolumeValue.textContent = `${dom.bgmVolumeSlider.value}%`;
+    });
+
+    dom.dragVolumeSlider.addEventListener("input", () => {
+      const value = Number(dom.dragVolumeSlider.value) / 100;
+      App.audio.ensureAudio();
+      App.audio.setDragVolume(value);
+      dom.dragVolumeValue.textContent = `${dom.dragVolumeSlider.value}%`;
+    });
+
+    dom.dragVolumeSlider.addEventListener("change", () => {
+      App.audio.playSelectSound({ bypassThrottle: true });
     });
 
     dom.clearVolumeSlider.addEventListener("input", () => {
