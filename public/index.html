@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Fruit Box</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="startOverlay" class="overlay">
+    <div class="panel menu-panel">
+      <div class="menu-hero">
+        <div class="menu-badge">FRUIT BOX</div>
+        <h1 class="menu-title">사과게임</h1>
+        <p class="menu-subtitle">혼자 바로 시작하거나 친구와 온라인 대전을 할 수 있어요.</p>
+      </div>
+
+      <section class="menu-mode-card menu-mode-card-primary">
+        <div class="mode-card-head">
+          <div class="mode-card-icon">🍎</div>
+          <div>
+            <div class="mode-card-kicker">SINGLE PLAY</div>
+            <div class="mode-card-title">혼자 바로 시작</div>
+          </div>
+        </div>
+        <p class="mode-card-desc">설정 없이 바로 플레이하고 최고 점수에 도전하세요.</p>
+        <button id="singleModeBtn" class="big-btn primary-cta" type="button">싱글 플레이 시작</button>
+      </section>
+
+      <div class="menu-divider"><span>ONLINE MATCH</span></div>
+
+      <section class="menu-mode-card menu-mode-card-secondary">
+        <div class="mode-card-head">
+          <div class="mode-card-icon online">⚔️</div>
+          <div>
+            <div class="mode-card-kicker">ONLINE</div>
+            <div class="mode-card-title">친구와 온라인 대전</div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label" for="nameInput">닉네임</label>
+          <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
+        </div>
+
+        <button id="createRoomBtn" class="big-btn primary-cta" type="button">방 만들기</button>
+
+        <div class="join-row">
+          <input id="roomCodeInput" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
+          <button id="joinRoomBtn" class="sub-btn join-btn" type="button">방 참가</button>
+        </div>
+
+        <p id="lobbyError" class="small-note error-note"></p>
+      </section>
+    </div>
+  </div>
+
+  <div id="roomOverlay" class="overlay hidden">
+    <div class="panel room-panel">
+      <div class="room-panel-head">
+        <div class="menu-badge room-badge">ROOM</div>
+        <h2>온라인 대기실</h2>
+        <p>친구에게 방 코드를 보내고 둘 다 준비하면 바로 시작됩니다.</p>
+      </div>
+
+      <div class="room-code-chip-wrap">
+        <div class="room-chip-label">ROOM CODE</div>
+        <div id="roomCodeBox" class="room-code-box">AAAAA</div>
+      </div>
+
+      <div class="room-player-card">
+        <div class="room-player-title">참가 플레이어</div>
+        <div id="roomPlayerList" class="room-player-list"></div>
+      </div>
+
+      <button id="readyBtn" class="big-btn primary-cta" type="button">준비하기</button>
+      <button id="leaveToLobbyBtn" class="sub-btn room-leave-btn" type="button">시작 화면으로</button>
+      <p class="small-note">2명이 모두 준비하면 같은 보드로 동시에 시작됩니다.</p>
+    </div>
+  </div>
+
+  <div id="rotateOverlay" class="rotate-overlay hidden">
+    <div class="rotate-card">
+      <div class="rotate-icon">📱↻</div>
+      <div class="rotate-title">가로로 돌려서 플레이해주세요</div>
+      <div class="rotate-desc">모바일에서는 가로 화면에 최적화되어 있습니다.</div>
+    </div>
+  </div>
+
+  <div class="app">
+    <div class="hud">
+      <div class="hud-left">
+        <button id="homeBtn" class="icon-btn" type="button" aria-label="홈">⌂</button>
+        <button id="restartBtnTop" class="icon-btn" type="button" aria-label="다시 시작">↺</button>
+      </div>
+
+      <div class="hud-center">
+        <div class="time-chip">
+          <span class="time-icon">◔</span>
+          <span id="timeValue" class="time-number">120</span>
+          <div class="time-bar-wrap">
+            <div id="timeBarFill" class="time-bar-fill"></div>
+          </div>
+        </div>
+        <div id="message" class="message hud-hidden-message"></div>
+      </div>
+
+      <div class="hud-right">
+        <div id="opponentCard" class="score-card opponent-card">
+          <div class="score-label-en">Opp</div>
+          <div id="opponentScoreValue" class="score-value-en">0</div>
+        </div>
+        <div class="score-card">
+          <div class="score-label-en">Score</div>
+          <div id="scoreValue" class="score-value-en">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="machine">
+      <div id="boardFrame" class="board-frame">
+        <div class="board-bg-grid"></div>
+        <div id="board" class="board"></div>
+        <div id="selectionRect" class="selection-rect"></div>
+      </div>
+
+      <div class="controls-row">
+        <div class="controls">
+          <button id="restartBtn" class="control-btn" type="button">다시하기</button>
+        </div>
+        <div id="modeHint" class="hint">온라인 대전</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="gameOver" class="game-over">
+    <div class="game-over-card">
+      <h2>게임 종료</h2>
+      <p>내 점수: <strong id="finalScore">0</strong></p>
+      <p id="resultText"></p>
+      <button id="restartBtnModal" class="big-btn primary-cta" type="button">다시하기</button>
+    </div>
+  </div>
+
+  <script src="/js/audio.js"></script>
+  <script src="/js/game.js"></script>
+  <script src="/js/lobby.js"></script>
+</body>
+</html>
