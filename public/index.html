@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Fruit Box</title>
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="theme-color" content="#28bc5f" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="사과게임" />
+  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -198,5 +205,14 @@
   <script src="/js/audio.js"></script>
   <script src="/js/game.js"></script>
   <script src="/js/lobby.js"></script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(console.error);
+      });
+    }
+  </script>
+
 </body>
 </html>
