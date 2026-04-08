@@ -2,13 +2,17 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  />
   <title>Fruit Box</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#28bc5f" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="사과게임" />
   <link rel="stylesheet" href="/css/style.css" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -16,9 +20,9 @@
   <div id="startOverlay" class="overlay start-overlay">
     <div class="panel menu-panel">
       <div class="menu-shell">
-        <div class="menu-screen-head">
+        <div class="menu-topbar">
           <div class="menu-badge">FRUIT BOX</div>
-          <div class="menu-chip">COMMON 9x18</div>
+          <div id="dailyStatusPill" class="menu-chip">오늘의 퍼즐 준비 중</div>
         </div>
 
         <div class="menu-title-stage">
@@ -30,98 +34,121 @@
             </h1>
             <span class="menu-title-fruit" aria-hidden="true">🍎</span>
           </div>
-          <p class="menu-subtitle">혼자 플레이하거나 친구와 같은 방에서 온라인 대전을 시작하세요.</p>
+          <p class="menu-subtitle">
+            같은 9x18 보드 규칙으로 혼자 플레이하거나 친구와 온라인 대전을 시작하세요.
+          </p>
         </div>
 
-        <div id="desktopStartLayout" class="menu-desktop-layout">
-          <div class="menu-mode-grid">
-            <button id="singleModeBtn" class="menu-mode-tile menu-mode-tile-single" type="button">
-              <span class="menu-mode-top">SINGLE PLAY</span>
-              <strong class="menu-mode-name">혼자 플레이</strong>
-              <span class="menu-mode-note">즉시 시작</span>
-              <span class="menu-mode-arrow" aria-hidden="true">▶</span>
-            </button>
+        <section class="menu-profile-card">
+          <div class="input-group">
+            <label class="input-label" for="nameInput">닉네임</label>
+            <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
+          </div>
+          <div class="menu-profile-copy">
+            <div class="menu-profile-label">마지막 닉네임과 방 코드는 자동 저장됩니다.</div>
+            <div id="singleRecordsPreview" class="menu-profile-note">최고 기록을 불러오는 중...</div>
+          </div>
+        </section>
 
-            <section class="menu-mode-tile menu-mode-tile-online">
-              <div class="menu-online-head">
-                <div class="menu-card-icon">⚔️</div>
-                <div>
-                  <div class="menu-mode-top">ONLINE MATCH</div>
-                  <div class="menu-online-title">친구와 온라인 대전</div>
+        <div class="menu-tile-grid">
+          <button id="singleMenuBtn" class="menu-tile menu-tile-single active" type="button">
+            <span class="menu-tile-top">SINGLE MODE</span>
+            <strong class="menu-tile-title">싱글모드</strong>
+            <span class="menu-tile-note">클래식 · 타임어택 · 데일리</span>
+          </button>
+
+          <button id="onlineMenuBtn" class="menu-tile menu-tile-online" type="button">
+            <span class="menu-tile-top">ONLINE MATCH</span>
+            <strong class="menu-tile-title">온라인전</strong>
+            <span class="menu-tile-note">방 만들기 · 방 참가</span>
+          </button>
+
+          <button id="openSettingsBtn" class="menu-tile menu-tile-settings" type="button">
+            <span class="menu-tile-top">SOUND SETTINGS</span>
+            <strong class="menu-tile-title">설정</strong>
+            <span class="menu-tile-note">배경음 · 효과음</span>
+          </button>
+        </div>
+
+        <div class="menu-panels">
+          <section id="singlePanel" class="menu-subpanel">
+            <div class="subpanel-head">
+              <div>
+                <div class="menu-section-kicker">SINGLE PLAY</div>
+                <h2>모드를 선택하고 바로 시작하세요</h2>
+              </div>
+              <div id="dailyPlayedBadge" class="menu-subtle-badge">데일리 준비 중</div>
+            </div>
+
+            <div class="mode-card-grid">
+              <button id="singleClassicBtn" class="mode-card mode-card-classic" type="button">
+                <span class="mode-card-top">CLASSIC</span>
+                <strong class="mode-card-title">클래식</strong>
+                <span class="mode-card-note">기본 120초 · 현재 규칙 그대로</span>
+              </button>
+
+              <button id="singleTimeAttackBtn" class="mode-card mode-card-timeattack" type="button">
+                <span class="mode-card-top">TIME ATTACK</span>
+                <strong class="mode-card-title">타임어택</strong>
+                <span class="mode-card-note">60초 안에 점수 몰아치기</span>
+              </button>
+
+              <button id="singleDailyBtn" class="mode-card mode-card-daily" type="button">
+                <span class="mode-card-top">DAILY SEED</span>
+                <strong class="mode-card-title">오늘의 퍼즐</strong>
+                <span id="dailyModeMeta" class="mode-card-note">오늘의 동일한 시드 보드</span>
+              </button>
+            </div>
+
+            <div class="single-records-grid">
+              <div class="record-card">
+                <span class="record-label">최고 점수</span>
+                <strong id="bestScoreValue" class="record-value">0</strong>
+              </div>
+              <div class="record-card">
+                <span class="record-label">최고 콤보</span>
+                <strong id="bestComboValue" class="record-value">x0</strong>
+              </div>
+              <div class="record-card">
+                <span class="record-label">최고 클리어율</span>
+                <strong id="bestClearValue" class="record-value">0%</strong>
+              </div>
+              <div class="record-card">
+                <span class="record-label">퍼펙트 클리어</span>
+                <strong id="perfectClearValue" class="record-value">0회</strong>
+              </div>
+            </div>
+          </section>
+
+          <section id="onlinePanel" class="menu-subpanel hidden">
+            <div class="subpanel-head">
+              <div>
+                <div class="menu-section-kicker">ONLINE MATCH</div>
+                <h2>친구와 같은 방에서 바로 시작</h2>
+              </div>
+              <div class="menu-subtle-badge">공통 9x18 보드</div>
+            </div>
+
+            <div class="online-panel-grid">
+              <div class="online-action-card">
+                <div class="online-action-title">방 만들기</div>
+                <p class="online-action-copy">방 코드를 공유하고 두 사람이 모두 준비하면 동시에 시작됩니다.</p>
+                <button id="createRoomBtn" class="big-btn primary-cta" type="button">방 만들기</button>
+              </div>
+
+              <div class="online-action-card">
+                <div class="online-action-title">방 참가</div>
+                <p class="online-action-copy">최근 입력한 방 코드는 자동으로 복원됩니다.</p>
+                <div class="input-group">
+                  <label class="input-label" for="roomCodeInput">방 코드</label>
+                  <input id="roomCodeInput" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
                 </div>
-              </div>
-
-              <div class="input-group">
-                <label class="input-label" for="nameInput">닉네임</label>
-                <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
-              </div>
-
-              <button id="createRoomBtn" class="big-btn primary-cta" type="button">방 만들기</button>
-
-              <div class="join-row">
-                <input id="roomCodeInput" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
-                <button id="joinRoomBtn" class="sub-btn join-btn" type="button">방 참가</button>
-              </div>
-
-              <p id="lobbyError" class="small-note error-note"></p>
-            </section>
-          </div>
-
-          <div class="menu-footer">
-            <button id="openSettingsBtn" class="menu-settings-btn" type="button" aria-label="설정">
-              <span class="menu-settings-icon" aria-hidden="true">⚙</span>
-              <span>설정</span>
-            </button>
-          </div>
-        </div>
-
-        <div id="mobileStartLayout" class="menu-mobile-layout" hidden>
-          <div id="mobileMenuHome" class="menu-mobile-home">
-            <button id="singleModeBtnMobile" class="menu-mobile-btn menu-mobile-btn-single" type="button">
-              <span class="menu-mobile-btn-top">SINGLE PLAY</span>
-              <strong class="menu-mobile-btn-title">싱글 플레이</strong>
-              <span class="menu-mobile-btn-sub">즉시 시작</span>
-              <span class="menu-mobile-btn-mark" aria-hidden="true">▶</span>
-            </button>
-
-            <button id="mobileOnlineMenuBtn" class="menu-mobile-btn menu-mobile-btn-online" type="button">
-              <span class="menu-mobile-btn-top">ONLINE MATCH</span>
-              <strong class="menu-mobile-btn-title">온라인 대전</strong>
-              <span class="menu-mobile-btn-sub">방 만들기 / 방 참가</span>
-            </button>
-
-            <button id="openSettingsBtnMobile" class="menu-mobile-btn menu-mobile-btn-settings" type="button">
-              <span class="menu-mobile-btn-top">SOUND SETTINGS</span>
-              <strong class="menu-mobile-btn-title">설정</strong>
-              <span class="menu-mobile-btn-sub">배경음 · 효과음</span>
-            </button>
-          </div>
-
-          <div id="mobileOnlinePanel" class="menu-mobile-online">
-            <div class="menu-mobile-online-head">
-              <button id="mobileOnlineBackBtn" class="menu-mobile-back-btn" type="button" aria-label="뒤로가기">←</button>
-              <div class="menu-mobile-online-copy">
-                <div class="menu-mode-top">ONLINE MATCH</div>
-                <div class="menu-mobile-online-title">친구와 온라인 대전</div>
+                <button id="joinRoomBtn" class="big-btn secondary-cta" type="button">방 참가</button>
               </div>
             </div>
 
-            <section class="menu-mobile-online-card">
-              <div class="input-group">
-                <label class="input-label" for="nameInputMobile">닉네임</label>
-                <input id="nameInputMobile" class="input" maxlength="12" placeholder="닉네임 입력" />
-              </div>
-
-              <button id="createRoomBtnMobile" class="big-btn primary-cta" type="button">방 만들기</button>
-
-              <div class="join-row">
-                <input id="roomCodeInputMobile" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
-                <button id="joinRoomBtnMobile" class="sub-btn join-btn" type="button">방 참가</button>
-              </div>
-
-              <p id="lobbyErrorMobile" class="small-note error-note"></p>
-            </section>
-          </div>
+            <p id="lobbyError" class="small-note error-note"></p>
+          </section>
         </div>
       </div>
     </div>
@@ -132,12 +159,16 @@
       <div class="room-panel-head">
         <div class="menu-badge room-badge">ROOM</div>
         <h2>온라인 대기실</h2>
-        <p>방 코드를 공유하고 두 플레이어가 모두 준비하면 같은 보드에서 동시에 시작됩니다.</p>
+        <p>같은 방, 같은 보드, 같은 좌표계로 동시에 시작합니다.</p>
       </div>
 
       <div class="room-code-chip-wrap">
         <div class="room-chip-label">ROOM CODE</div>
-        <div id="roomCodeBox" class="room-code-box">AAAAA</div>
+        <div class="room-code-row">
+          <div id="roomCodeBox" class="room-code-box">AAAAA</div>
+          <button id="copyRoomCodeBtn" class="sub-btn room-copy-btn" type="button">복사</button>
+        </div>
+        <div id="copyRoomCodeFeedback" class="small-note copy-feedback"></div>
       </div>
 
       <div class="room-player-card">
@@ -147,7 +178,7 @@
 
       <button id="readyBtn" class="big-btn primary-cta" type="button">준비하기</button>
       <button id="leaveToLobbyBtn" class="sub-btn room-leave-btn" type="button">시작 화면으로</button>
-      <p class="small-note">온라인에서는 모바일과 PC가 완전히 같은 판정과 좌표계를 사용합니다.</p>
+      <p class="small-note">온라인은 싱글과 다른 규칙을 섞지 않고, 서버 기준 보드로만 판정합니다.</p>
     </div>
   </div>
 
@@ -156,31 +187,37 @@
       <div class="settings-head">
         <div class="menu-badge settings-badge">SETTINGS</div>
         <h2>사운드 설정</h2>
-        <p>배경음악, 드래그 효과음, 사과 삭제 효과음을 각각 따로 조절할 수 있어요.</p>
+        <p>시작 화면과 게임 중 설정은 같은 저장값을 공유합니다.</p>
       </div>
 
       <div class="settings-group">
+        <div class="settings-toggle-row">
+          <div>
+            <div class="settings-toggle-label">배경음</div>
+            <div class="settings-toggle-copy">게임 중에도 바로 켜고 끌 수 있어요.</div>
+          </div>
+          <button id="bgmToggleBtn" class="toggle-pill" type="button" aria-pressed="true">ON</button>
+        </div>
         <div class="settings-row">
-          <label for="bgmVolumeSlider">배경음악</label>
+          <label for="bgmVolumeSlider">배경음 볼륨</label>
           <strong id="bgmVolumeValue">40%</strong>
         </div>
         <input id="bgmVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
       </div>
 
       <div class="settings-group">
-        <div class="settings-row">
-          <label for="dragVolumeSlider">드래그 효과음</label>
-          <strong id="dragVolumeValue">70%</strong>
+        <div class="settings-toggle-row">
+          <div>
+            <div class="settings-toggle-label">효과음</div>
+            <div class="settings-toggle-copy">드래그, 삭제, 결과 사운드에 함께 적용됩니다.</div>
+          </div>
+          <button id="sfxToggleBtn" class="toggle-pill" type="button" aria-pressed="true">ON</button>
         </div>
-        <input id="dragVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
-      </div>
-
-      <div class="settings-group">
         <div class="settings-row">
-          <label for="clearVolumeSlider">사과 삭제 효과음</label>
-          <strong id="clearVolumeValue">80%</strong>
+          <label for="sfxVolumeSlider">효과음 볼륨</label>
+          <strong id="sfxVolumeValue">80%</strong>
         </div>
-        <input id="clearVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
+        <input id="sfxVolumeSlider" class="settings-slider" type="range" min="0" max="100" step="1" />
       </div>
 
       <button id="closeSettingsBtn" class="big-btn secondary-cta" type="button">닫기</button>
@@ -191,7 +228,7 @@
     <div class="rotate-card">
       <div class="rotate-icon">📱↻</div>
       <div class="rotate-title">가로로 돌려서 플레이해주세요</div>
-      <div class="rotate-desc">모바일에서는 가로 화면에서 가장 편하게 범위를 선택할 수 있도록 설계되어 있습니다.</div>
+      <div class="rotate-desc">게임 진행 중에는 가로 화면이 가장 안정적으로 동작합니다.</div>
     </div>
   </div>
 
@@ -213,6 +250,8 @@
       </div>
 
       <div class="hud-right">
+        <button id="gameSettingsBtn" class="icon-btn icon-btn-utility" type="button" aria-label="게임 설정">⚙</button>
+
         <div id="opponentCard" class="score-card opponent-card hidden">
           <div class="score-copy">
             <div id="opponentScoreLabel" class="score-name">상대</div>
@@ -237,12 +276,21 @@
           <div class="board-bg-grid"></div>
           <div id="board" class="board"></div>
           <div id="selectionRect" class="selection-rect"></div>
+          <div id="hintRect" class="hint-rect"></div>
         </div>
       </div>
 
       <div class="board-footer">
-        <div id="modeHint" class="hint">싱글 9x18 보드</div>
-        <button id="restartBtn" class="control-btn control-btn-secondary" type="button">다시하기</button>
+        <div class="footer-info">
+          <div id="modeHint" class="hint">공통 9x18 보드</div>
+          <div id="comboChip" class="footer-chip hidden">콤보 x2</div>
+          <div id="recordChip" class="footer-chip hidden">BEST 0</div>
+        </div>
+
+        <div class="footer-actions">
+          <button id="hintBtn" class="control-btn control-btn-hint hidden" type="button">힌트</button>
+          <button id="restartBtn" class="control-btn control-btn-secondary" type="button">다시하기</button>
+        </div>
       </div>
 
       <div id="statusToast" class="status-toast hidden" aria-live="polite"></div>
@@ -250,11 +298,39 @@
   </div>
 
   <div id="gameOver" class="game-over">
-    <div class="game-over-card">
-      <h2>게임 종료</h2>
-      <p>내 점수: <strong id="finalScore">0</strong></p>
-      <p id="resultText"></p>
-      <button id="restartBtnModal" class="big-btn primary-cta" type="button">다시하기</button>
+    <div id="resultCard" class="game-over-card result-neutral">
+      <div class="result-head">
+        <div class="result-badge-row">
+          <div id="resultModeBadge" class="menu-badge result-mode-badge">CLASSIC</div>
+          <div id="resultStatePill" class="result-state-pill">RESULT</div>
+        </div>
+        <div id="resultIcon" class="result-icon" aria-hidden="true">★</div>
+        <h2 id="resultTitle">게임 종료</h2>
+        <p id="resultText" class="result-copy"></p>
+      </div>
+
+      <div class="result-stats">
+        <div class="result-stat">
+          <span id="resultStat1Label" class="result-stat-label">점수</span>
+          <strong id="finalScore" class="result-stat-value">0</strong>
+        </div>
+        <div class="result-stat">
+          <span id="resultStat2Label" class="result-stat-label">최고 콤보</span>
+          <strong id="resultStat2Value" class="result-stat-value">x0</strong>
+        </div>
+        <div class="result-stat">
+          <span id="resultStat3Label" class="result-stat-label">클리어율</span>
+          <strong id="resultStat3Value" class="result-stat-value">0%</strong>
+        </div>
+      </div>
+
+      <p id="resultMeta" class="result-meta"></p>
+
+      <div class="result-actions">
+        <button id="restartBtnModal" class="big-btn primary-cta" type="button">다시하기</button>
+        <button id="rematchBtn" class="big-btn secondary-cta hidden" type="button">재대결</button>
+        <button id="resultHomeBtn" class="sub-btn result-home-btn" type="button">시작 화면으로</button>
+      </div>
     </div>
   </div>
 
@@ -263,8 +339,39 @@
   <script src="/js/lobby.js"></script>
   <script>
     if ("serviceWorker" in navigator) {
+      let controllerReloaded = false;
+
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (controllerReloaded) return;
+        controllerReloaded = true;
+        window.location.reload();
+      });
+
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(console.error);
+        navigator.serviceWorker
+          .register("/sw.js", { updateViaCache: "none" })
+          .then((registration) => {
+            registration.update().catch(() => {});
+
+            if (registration.waiting) {
+              registration.waiting.postMessage({ type: "skipWaiting" });
+            }
+
+            registration.addEventListener("updatefound", () => {
+              const installingWorker = registration.installing;
+              if (!installingWorker) return;
+
+              installingWorker.addEventListener("statechange", () => {
+                if (
+                  installingWorker.state === "installed"
+                  && navigator.serviceWorker.controller
+                ) {
+                  installingWorker.postMessage({ type: "skipWaiting" });
+                }
+              });
+            });
+          })
+          .catch(console.error);
       });
     }
   </script>

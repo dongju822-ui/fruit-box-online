@@ -3,11 +3,12 @@
 
   const STORAGE_KEY = "fruitbox-audio-settings";
   const DEFAULT_SETTINGS = Object.freeze({
+    bgmEnabled: true,
+    sfxEnabled: true,
     bgmVolume: 0.4,
-    dragVolume: 0.7,
-    clearVolume: 0.8
+    sfxVolume: 0.78
   });
-  const SFX_VOLUME_MULTIPLIER = 3.1;
+  const SFX_VOLUME_MULTIPLIER = 2.5;
   const SFX_MAX_VOLUME = 0.2;
   const BGM_SRC = "/assets/bgm/3.mp3";
   const SELECT_SOUND_THROTTLE_MS = 40;
@@ -29,25 +30,41 @@
     return Math.max(0, Math.min(1, num));
   }
 
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return fallback;
+  }
+
   function createDefaultSettings() {
     return {
+      bgmEnabled: DEFAULT_SETTINGS.bgmEnabled,
+      sfxEnabled: DEFAULT_SETTINGS.sfxEnabled,
       bgmVolume: DEFAULT_SETTINGS.bgmVolume,
-      dragVolume: DEFAULT_SETTINGS.dragVolume,
-      clearVolume: DEFAULT_SETTINGS.clearVolume
+      sfxVolume: DEFAULT_SETTINGS.sfxVolume
     };
   }
 
   function loadSettings() {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return createDefaultSettings();
-      }
+      if (!raw) return createDefaultSettings();
+
       const parsed = JSON.parse(raw);
+      const legacySfxVolume = clamp01(
+        (
+          clamp01(parsed?.dragVolume, DEFAULT_SETTINGS.sfxVolume)
+          + clamp01(parsed?.clearVolume, DEFAULT_SETTINGS.sfxVolume)
+        ) / 2,
+        DEFAULT_SETTINGS.sfxVolume
+      );
+
       return {
+        bgmEnabled: normalizeBoolean(parsed?.bgmEnabled, true),
+        sfxEnabled: normalizeBoolean(parsed?.sfxEnabled, true),
         bgmVolume: clamp01(parsed?.bgmVolume, DEFAULT_SETTINGS.bgmVolume),
-        dragVolume: clamp01(parsed?.dragVolume, DEFAULT_SETTINGS.dragVolume),
-        clearVolume: clamp01(parsed?.clearVolume, DEFAULT_SETTINGS.clearVolume)
+        sfxVolume: clamp01(parsed?.sfxVolume, legacySfxVolume)
       };
     } catch (error) {
       return createDefaultSettings();
@@ -58,6 +75,39 @@
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
     } catch (error) {}
+  }
+
+  function createBgmAudio() {
+    if (state.bgmAudio) return state.bgmAudio;
+
+    const audio = new Audio(BGM_SRC);
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.crossOrigin = "anonymous";
+    audio.playsInline = true;
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "");
+    state.bgmAudio = audio;
+    return audio;
+  }
+
+  function isPageVisible() {
+    return document.visibilityState !== "hidden";
+  }
+
+  function bindUnlockHandlers() {
+    if (state.unlockHandlersBound) return;
+    state.unlockHandlersBound = true;
+
+    const unlock = () => {
+      if (!state.audioUnlocked || state.audioCtx?.state === "suspended" || state.bgmAudio?.paused) {
+        ensureAudio();
+      }
+    };
+
+    ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
+      document.addEventListener(eventName, unlock, { passive: true });
+    });
   }
 
   function ensureAudio() {
@@ -73,17 +123,24 @@
     }
 
     state.audioUnlocked = true;
-    startBgm();
+    syncBgmAudio({ attemptPlay: true });
     return state.audioCtx;
   }
 
-  function isPageVisible() {
-    return document.visibilityState !== "hidden";
+  function pauseBgm() {
+    if (state.bgmAudio) {
+      state.bgmAudio.pause();
+    }
   }
 
   function syncBgmAudio({ attemptPlay = false } = {}) {
     const bgm = createBgmAudio();
-    bgm.volume = state.settings.bgmVolume;
+    bgm.volume = state.settings.bgmEnabled ? state.settings.bgmVolume : 0;
+
+    if (!state.settings.bgmEnabled || bgm.volume <= 0.0001) {
+      bgm.pause();
+      return bgm;
+    }
 
     if (!attemptPlay || !state.audioUnlocked || !isPageVisible()) {
       return bgm;
@@ -97,50 +154,41 @@
     return bgm;
   }
 
-  function createBgmAudio() {
-    if (state.bgmAudio) return state.bgmAudio;
-    const audio = new Audio(BGM_SRC);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = state.settings.bgmVolume;
-    audio.crossOrigin = "anonymous";
-    audio.playsInline = true;
-    audio.setAttribute("playsinline", "");
-    audio.setAttribute("webkit-playsinline", "");
-    state.bgmAudio = audio;
-    return audio;
-  }
-
   function startBgm() {
     if (!state.audioUnlocked) return;
     syncBgmAudio({ attemptPlay: true });
   }
 
-  function pauseBgm() {
-    if (state.bgmAudio) state.bgmAudio.pause();
-  }
-
-  function setSettingVolume(key, value) {
+  function setSetting(key, value) {
     if (!(key in DEFAULT_SETTINGS)) return;
-    state.settings[key] = clamp01(value, DEFAULT_SETTINGS[key]);
 
-    if (key === "bgmVolume") {
+    if (typeof DEFAULT_SETTINGS[key] === "boolean") {
+      state.settings[key] = Boolean(value);
+    } else {
+      state.settings[key] = clamp01(value, DEFAULT_SETTINGS[key]);
+    }
+
+    if (key === "bgmEnabled" || key === "bgmVolume") {
       syncBgmAudio({ attemptPlay: true });
     }
 
     saveSettings();
   }
 
+  function setBgmEnabled(value) {
+    setSetting("bgmEnabled", value);
+  }
+
+  function setSfxEnabled(value) {
+    setSetting("sfxEnabled", value);
+  }
+
   function setBgmVolume(value) {
-    setSettingVolume("bgmVolume", value);
+    setSetting("bgmVolume", value);
   }
 
-  function setDragVolume(value) {
-    setSettingVolume("dragVolume", value);
-  }
-
-  function setClearVolume(value) {
-    setSettingVolume("clearVolume", value);
+  function setSfxVolume(value) {
+    setSetting("sfxVolume", value);
   }
 
   function getSettings() {
@@ -153,13 +201,14 @@
     duration = 0.12,
     volume = 0.03,
     type = "triangle",
-    multiplier = 1,
-    gainScale = 1
+    multiplier = 1
   } = {}) {
+    if (!state.settings.sfxEnabled || state.settings.sfxVolume <= 0.0001) return;
+
     const ctx = ensureAudio();
     if (!ctx) return;
 
-    const finalVolume = Math.min(volume * multiplier * gainScale, SFX_MAX_VOLUME);
+    const finalVolume = Math.min(volume * multiplier * state.settings.sfxVolume, SFX_MAX_VOLUME);
     if (finalVolume <= 0.0001) return;
 
     const now = ctx.currentTime;
@@ -182,15 +231,10 @@
     osc.stop(now + duration + 0.02);
   }
 
-  function playSfxTone(options, { volumeKey = null, gainScale = 1 } = {}) {
-    const settingScale = volumeKey
-      ? clamp01(state.settings[volumeKey], DEFAULT_SETTINGS[volumeKey])
-      : 1;
-
+  function playSfxTone(options) {
     tone({
       ...options,
-      multiplier: SFX_VOLUME_MULTIPLIER,
-      gainScale: settingScale * gainScale
+      multiplier: SFX_VOLUME_MULTIPLIER
     });
   }
 
@@ -202,32 +246,18 @@
     const { bypassThrottle = false } = options;
     const now = performance.now();
     if (!bypassThrottle && now - state.lastSelectAt < SELECT_SOUND_THROTTLE_MS) return;
-    if (!bypassThrottle) {
-      state.lastSelectAt = now;
-    }
+    if (!bypassThrottle) state.lastSelectAt = now;
 
-    playSfxTone(
-      { frequency: 820, endFrequency: 1080, duration: 0.036, volume: 0.032, type: "triangle" },
-      { volumeKey: "dragVolume" }
-    );
+    playSfxTone({ frequency: 820, endFrequency: 1080, duration: 0.036, volume: 0.032, type: "triangle" });
   }
 
   function playSuccessSound() {
-    playSfxTone(
-      { frequency: 700, endFrequency: 980, duration: 0.08, volume: 0.062, type: "triangle" },
-      { volumeKey: "clearVolume" }
-    );
+    playSfxTone({ frequency: 700, endFrequency: 980, duration: 0.08, volume: 0.062, type: "triangle" });
     window.setTimeout(() => {
-      playSfxTone(
-        { frequency: 920, endFrequency: 1320, duration: 0.11, volume: 0.074, type: "triangle" },
-        { volumeKey: "clearVolume" }
-      );
+      playSfxTone({ frequency: 920, endFrequency: 1320, duration: 0.11, volume: 0.074, type: "triangle" });
     }, 38);
     window.setTimeout(() => {
-      playSfxTone(
-        { frequency: 1180, endFrequency: 1680, duration: 0.095, volume: 0.068, type: "triangle" },
-        { volumeKey: "clearVolume" }
-      );
+      playSfxTone({ frequency: 1180, endFrequency: 1680, duration: 0.095, volume: 0.068, type: "triangle" });
     }, 96);
   }
 
@@ -235,14 +265,9 @@
     const { bypassThrottle = false } = options;
     const now = performance.now();
     if (!bypassThrottle && now - state.lastClearPreviewAt < CLEAR_PREVIEW_THROTTLE_MS) return;
-    if (!bypassThrottle) {
-      state.lastClearPreviewAt = now;
-    }
+    if (!bypassThrottle) state.lastClearPreviewAt = now;
 
-    playSfxTone(
-      { frequency: 860, endFrequency: 1220, duration: 0.06, volume: 0.05, type: "triangle" },
-      { volumeKey: "clearVolume" }
-    );
+    playSfxTone({ frequency: 860, endFrequency: 1220, duration: 0.06, volume: 0.05, type: "triangle" });
   }
 
   function playFailSound() {
@@ -265,6 +290,7 @@
       playSfxTone({ frequency: 520, endFrequency: 520, duration: 0.16, volume: 0.032, type: "triangle" });
       return;
     }
+
     if (kind === "win") {
       playSfxTone({ frequency: 784, endFrequency: 1175, duration: 0.16, volume: 0.04, type: "triangle" });
       window.setTimeout(() => {
@@ -272,26 +298,12 @@
       }, 90);
       return;
     }
-    playSfxTone({ frequency: 300, endFrequency: 180, duration: 0.20, volume: 0.03, type: "sawtooth" });
+
+    playSfxTone({ frequency: 300, endFrequency: 180, duration: 0.2, volume: 0.03, type: "sawtooth" });
   }
 
   function playOpponentLeftSound() {
-    playSfxTone({ frequency: 360, endFrequency: 220, duration: 0.20, volume: 0.028, type: "square" });
-  }
-
-  function bindUnlockHandlers() {
-    if (state.unlockHandlersBound) return;
-    state.unlockHandlersBound = true;
-
-    const unlock = () => {
-      if (!state.audioUnlocked || state.audioCtx?.state === "suspended" || state.bgmAudio?.paused) {
-        ensureAudio();
-      }
-    };
-
-    ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
-      document.addEventListener(eventName, unlock, { passive: true });
-    });
+    playSfxTone({ frequency: 360, endFrequency: 220, duration: 0.2, volume: 0.028, type: "square" });
   }
 
   bindUnlockHandlers();
@@ -321,9 +333,10 @@
     ensureAudio,
     startBgm,
     pauseBgm,
+    setBgmEnabled,
+    setSfxEnabled,
     setBgmVolume,
-    setDragVolume,
-    setClearVolume,
+    setSfxVolume,
     getSettings,
     playUiSound,
     playSelectSound,

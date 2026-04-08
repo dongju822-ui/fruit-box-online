@@ -1,4 +1,3 @@
-
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -13,6 +12,7 @@ const ROOM_PLAYER_LIMIT = 2;
 const GAME_DURATION = 90;
 const ROWS = 9;
 const COLS = 18;
+const DAILY_TIMEZONE = "Asia/Seoul";
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -73,6 +73,44 @@ function serializePlayers(room) {
     score: player.score
   }));
 }
+
+function formatDailyDateKey(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DAILY_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || "1970";
+  const month = parts.find((part) => part.type === "month")?.value || "01";
+  const day = parts.find((part) => part.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
+}
+
+function hashStringToSeed(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (Math.abs(hash) % 1000000000) + 1;
+}
+
+function buildDailySeedPayload() {
+  const dateKey = formatDailyDateKey();
+  return {
+    dateKey,
+    label: dateKey.replace(/-/g, "."),
+    seed: hashStringToSeed(`fruit-box-daily:${dateKey}`)
+  };
+}
+
+app.get("/api/daily-seed", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(buildDailySeedPayload());
+});
 
 function createRoom(hostSocketId, hostName) {
   let code = generateRoomCode();
@@ -165,6 +203,9 @@ function finishGame(room, reason = "timeup") {
   clearGameTimer(room);
   room.gameStarted = false;
   room.gameEnded = true;
+  room.players.forEach((player) => {
+    player.ready = false;
+  });
 
   const sorted = [...room.players].sort((a, b) => (b.score || 0) - (a.score || 0));
   const top = sorted[0];
@@ -254,10 +295,10 @@ function removePlayerFromRoom(room, socketId, options = {}) {
     opponentLeftMessage = "상대가 나가서 대기실로 돌아갑니다."
   } = options;
 
-  const wasGameInProgress = room.gameStarted && !room.gameEnded;
+  const shouldNotifyOpponent = notifyOpponentLeft && (room.gameStarted || room.gameEnded);
   const remainingPlayers = room.players.filter((player) => player.socketId !== socketId);
 
-  if (notifyOpponentLeft && wasGameInProgress && remainingPlayers.length > 0) {
+  if (shouldNotifyOpponent && remainingPlayers.length > 0) {
     remainingPlayers.forEach((player) => {
       io.to(player.socketId).emit("game:opponentLeft", {
         message: opponentLeftMessage
@@ -377,7 +418,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("room:leave", (_, callback) => {
+  socket.on("room:leave", (_payload, callback) => {
     const room = getRoomBySocketId(socket.id);
 
     if (!room) {
@@ -397,7 +438,7 @@ io.on("connection", (socket) => {
     callback?.({ ok: true });
   });
 
-  socket.on("room:toggleReady", (_, callback) => {
+  socket.on("room:toggleReady", (_payload, callback) => {
     const room = getRoomBySocketId(socket.id);
 
     if (!room) {
@@ -517,7 +558,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("room:resetLobby", (_, callback) => {
+  socket.on("room:resetLobby", (_payload, callback) => {
     const room = getRoomBySocketId(socket.id);
 
     if (!room) {
@@ -526,7 +567,6 @@ io.on("connection", (socket) => {
     }
 
     resetRoomToLobby(room);
-
     callback?.({ ok: true });
     broadcastRoomUpdate(room);
   });

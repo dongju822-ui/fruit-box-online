@@ -1,9 +1,24 @@
 (() => {
   const App = window.App || (window.App = {});
+
   const DEFAULT_ROWS = 9;
   const DEFAULT_COLS = 18;
   const DEFAULT_DURATION = 120;
   const DRAG_FEEDBACK_THROTTLE_MS = 40;
+  const COMBO_WINDOW_MS = 2000;
+  const PERFECT_CLEAR_BONUS = 80;
+  const HINT_DURATION_MS = 2200;
+  const HINT_COOLDOWN_MS = 10000;
+  const HINT_MAX_USES = 2;
+  const SINGLE_RECORDS_KEY = "fruitbox-single-records";
+  const DAILY_PROGRESS_KEY = "fruitbox-daily-progress";
+  const SINGLE_MODE_PRESETS = Object.freeze({
+    classic: { label: "클래식", duration: 120 },
+    timeattack: { label: "타임어택", duration: 60 },
+    daily: { label: "오늘의 퍼즐", duration: 120 }
+  });
+
+  const dom = {};
 
   const state = App.state || (App.state = {
     socket: null,
@@ -34,10 +49,31 @@
     layout: null,
     boardLayoutRaf: null,
     resizeObserver: null,
-    toastTimerId: null
+    toastTimerId: null,
+    dropLayer: null,
+    singleConfig: {
+      modeId: "classic",
+      label: SINGLE_MODE_PRESETS.classic.label,
+      duration: SINGLE_MODE_PRESETS.classic.duration,
+      seed: 1,
+      dailyKey: ""
+    },
+    singleStats: {
+      removedCount: 0,
+      currentCombo: 0,
+      bestCombo: 0,
+      lastClearAt: 0,
+      perfectClear: false,
+      hintUsesLeft: HINT_MAX_USES,
+      hintCooldownUntil: 0
+    },
+    hintPreview: null,
+    hintPreviewTimerId: null,
+    comboChipTimerId: null,
+    records: loadSingleRecords(),
+    dailyProgress: loadDailyProgress(),
+    dailyChallenge: createFallbackDailyChallenge()
   });
-
-  const dom = {};
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -47,11 +83,157 @@
     return String(name || "").trim().slice(0, 12) || fallback;
   }
 
+  function escapeHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function getSingleCellCount() {
+    return state.ROWS * state.COLS;
+  }
+
+  function createLocalDateKey(date = new Date()) {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value || "1970";
+    const month = parts.find((part) => part.type === "month")?.value || "01";
+    const day = parts.find((part) => part.type === "day")?.value || "01";
+    return `${year}-${month}-${day}`;
+  }
+
+  function hashStringToSeed(text) {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (Math.abs(hash) % 1000000000) + 1;
+  }
+
+  function loadSingleRecords() {
+    const defaults = {
+      bestScore: 0,
+      bestCombo: 0,
+      bestClearRate: 0,
+      perfectClearCount: 0
+    };
+
+    try {
+      const raw = window.localStorage.getItem(SINGLE_RECORDS_KEY);
+      if (!raw) return defaults;
+      const parsed = JSON.parse(raw);
+      return {
+        bestScore: Math.max(0, Number(parsed?.bestScore) || 0),
+        bestCombo: Math.max(0, Number(parsed?.bestCombo) || 0),
+        bestClearRate: Math.max(0, Math.min(100, Number(parsed?.bestClearRate) || 0)),
+        perfectClearCount: Math.max(0, Number(parsed?.perfectClearCount) || 0)
+      };
+    } catch (error) {
+      return defaults;
+    }
+  }
+
+  function saveSingleRecords() {
+    try {
+      window.localStorage.setItem(SINGLE_RECORDS_KEY, JSON.stringify(state.records));
+    } catch (error) {}
+  }
+
+  function loadDailyProgress() {
+    try {
+      const raw = window.localStorage.getItem(DAILY_PROGRESS_KEY);
+      if (!raw) return { lastPlayedKey: "" };
+      const parsed = JSON.parse(raw);
+      return {
+        lastPlayedKey: String(parsed?.lastPlayedKey || "")
+      };
+    } catch (error) {
+      return { lastPlayedKey: "" };
+    }
+  }
+
+  function saveDailyProgress() {
+    try {
+      window.localStorage.setItem(DAILY_PROGRESS_KEY, JSON.stringify(state.dailyProgress));
+    } catch (error) {}
+  }
+
+  function createFallbackDailyChallenge() {
+    const dateKey = createLocalDateKey();
+    return {
+      dateKey,
+      label: dateKey.replace(/-/g, "."),
+      seed: hashStringToSeed(`fruit-box-daily:${dateKey}`)
+    };
+  }
+
+  function getMenuData() {
+    return {
+      records: { ...state.records },
+      dailyChallenge: { ...state.dailyChallenge },
+      hasPlayedDaily: state.dailyProgress.lastPlayedKey === state.dailyChallenge.dateKey
+    };
+  }
+
+  function emitMenuDataChange() {
+    window.dispatchEvent(
+      new CustomEvent("fruitbox:menu-data-changed", {
+        detail: getMenuData()
+      })
+    );
+  }
+
+  function setDailyChallenge(info = {}) {
+    const fallback = createFallbackDailyChallenge();
+    state.dailyChallenge = {
+      dateKey: String(info.dateKey || fallback.dateKey),
+      label: String(info.label || fallback.label),
+      seed: Number.isFinite(Number(info.seed)) ? Number(info.seed) : fallback.seed
+    };
+    emitMenuDataChange();
+  }
+
+  function markDailyPlayed(dateKey) {
+    if (!dateKey) return;
+    state.dailyProgress.lastPlayedKey = dateKey;
+    saveDailyProgress();
+    emitMenuDataChange();
+  }
+
+  function persistSingleRecords(summary) {
+    const flags = {
+      bestScore: summary.score > state.records.bestScore,
+      bestCombo: summary.bestCombo > state.records.bestCombo,
+      bestClearRate: summary.clearRate > state.records.bestClearRate,
+      perfectClear: summary.perfectClear
+    };
+
+    state.records.bestScore = Math.max(state.records.bestScore, summary.score);
+    state.records.bestCombo = Math.max(state.records.bestCombo, summary.bestCombo);
+    state.records.bestClearRate = Math.max(state.records.bestClearRate, summary.clearRate);
+    if (summary.perfectClear) {
+      state.records.perfectClearCount += 1;
+    }
+
+    saveSingleRecords();
+    emitMenuDataChange();
+    return flags;
+  }
+
   function cacheDom() {
     dom.board = document.getElementById("board");
     dom.boardStage = document.getElementById("boardStage");
     dom.boardFrame = document.getElementById("boardFrame");
     dom.selectionRect = document.getElementById("selectionRect");
+    dom.hintRect = document.getElementById("hintRect");
     dom.timeValue = document.getElementById("timeValue");
     dom.timeBarFill = document.getElementById("timeBarFill");
     dom.scoreLabel = document.getElementById("scoreLabel");
@@ -60,19 +242,35 @@
     dom.opponentScoreLabel = document.getElementById("opponentScoreLabel");
     dom.opponentScoreValue = document.getElementById("opponentScoreValue");
     dom.modeHint = document.getElementById("modeHint");
+    dom.comboChip = document.getElementById("comboChip");
+    dom.recordChip = document.getElementById("recordChip");
+    dom.hintBtn = document.getElementById("hintBtn");
     dom.statusToast = document.getElementById("statusToast");
     dom.rotateOverlay = document.getElementById("rotateOverlay");
+    dom.settingsOverlay = document.getElementById("settingsOverlay");
     dom.gameOver = document.getElementById("gameOver");
-    dom.finalScore = document.getElementById("finalScore");
+    dom.resultCard = document.getElementById("resultCard");
+    dom.resultTitle = document.getElementById("resultTitle");
     dom.resultText = document.getElementById("resultText");
+    dom.resultIcon = document.getElementById("resultIcon");
+    dom.resultModeBadge = document.getElementById("resultModeBadge");
+    dom.resultStatePill = document.getElementById("resultStatePill");
+    dom.resultMeta = document.getElementById("resultMeta");
+    dom.finalScore = document.getElementById("finalScore");
+    dom.resultStat1Label = document.getElementById("resultStat1Label");
+    dom.resultStat2Label = document.getElementById("resultStat2Label");
+    dom.resultStat3Label = document.getElementById("resultStat3Label");
+    dom.resultStat2Value = document.getElementById("resultStat2Value");
+    dom.resultStat3Value = document.getElementById("resultStat3Value");
+    dom.restartBtnModal = document.getElementById("restartBtnModal");
+    dom.rematchBtn = document.getElementById("rematchBtn");
     dom.startOverlay = document.getElementById("startOverlay");
     dom.roomOverlay = document.getElementById("roomOverlay");
     dom.roomCodeBox = document.getElementById("roomCodeBox");
     dom.roomPlayerList = document.getElementById("roomPlayerList");
     dom.readyBtn = document.getElementById("readyBtn");
-    dom.lobbyError = document.getElementById("lobbyError");
-    dom.lobbyErrorMobile = document.getElementById("lobbyErrorMobile");
-    dom.dropLayer = null;
+    dom.restartBtn = document.getElementById("restartBtn");
+    dom.restartBtnTop = document.getElementById("restartBtnTop");
   }
 
   function getSocket() {
@@ -94,66 +292,6 @@
     const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
     const hasTouch = coarsePointer || window.navigator.maxTouchPoints > 0;
     return hasTouch && typeof window.navigator.vibrate === "function" && !isIOSDevice();
-  }
-
-  function triggerDragEntryFeedback(pos, options = {}) {
-    if (!pos) return;
-
-    const { force = false } = options;
-    const cellData = state.board[pos.row]?.[pos.col];
-    if (!cellData || cellData.removed) return;
-
-    const key = getCellKey(pos);
-    if (!force && state.dragVisitedKeys.has(key)) return;
-    state.dragVisitedKeys.add(key);
-
-    const cell = state.cellEls[pos.row]?.[pos.col];
-    if (!cell) return;
-
-    if (cell._dragEntryTimer) {
-      window.clearTimeout(cell._dragEntryTimer);
-      cell._dragEntryTimer = null;
-    }
-
-    cell.classList.remove("drag-entry");
-    void cell.offsetWidth;
-    cell.classList.add("drag-entry");
-    cell._dragEntryTimer = window.setTimeout(() => {
-      cell.classList.remove("drag-entry");
-      cell._dragEntryTimer = null;
-    }, 150);
-
-    const now = performance.now();
-    if (now - state.lastDragFeedbackAt < DRAG_FEEDBACK_THROTTLE_MS) return;
-
-    state.lastDragFeedbackAt = now;
-    App.audio.playSelectSound();
-
-    if (canUseTouchVibration()) {
-      try {
-        window.navigator.vibrate(12);
-      } catch (error) {}
-    }
-  }
-
-  function ensureDropLayer() {
-    if (dom.dropLayer && dom.dropLayer.isConnected) {
-      return dom.dropLayer;
-    }
-
-    const layer = document.createElement("div");
-    layer.id = "dropLayer";
-    Object.assign(layer.style, {
-      position: "absolute",
-      inset: "0",
-      pointerEvents: "none",
-      overflow: "visible",
-      zIndex: "8"
-    });
-
-    dom.boardFrame.appendChild(layer);
-    dom.dropLayer = layer;
-    return layer;
   }
 
   function isSingleMode() {
@@ -202,6 +340,14 @@
     }
   }
 
+  function updateScore() {
+    dom.scoreValue.textContent = String(state.score);
+  }
+
+  function updateOpponentScore(value = 0) {
+    dom.opponentScoreValue.textContent = String(value);
+  }
+
   function updateScoreboardLabels(players = null) {
     const roomPlayers = Array.isArray(players) && players.length
       ? players
@@ -223,29 +369,94 @@
     }
 
     dom.scoreLabel.textContent = myLabel;
+    dom.scoreLabel.title = myLabel;
     dom.opponentScoreLabel.textContent = opponentLabel;
+    dom.opponentScoreLabel.title = opponentLabel;
     dom.opponentCard.classList.toggle("hidden", !showOpponent);
+  }
+
+  function updateScoresFromPlayers(players = []) {
+    const me = players.find((player) => player.socketId === state.mySocketId);
+    const opponent = players.find((player) => player.socketId !== state.mySocketId);
+
+    state.score = typeof me?.score === "number" ? me.score : 0;
+    updateScore();
+    updateOpponentScore(typeof opponent?.score === "number" ? opponent.score : 0);
+    updateScoreboardLabels(players);
+  }
+
+  function hideComboChip() {
+    if (state.comboChipTimerId) {
+      window.clearTimeout(state.comboChipTimerId);
+      state.comboChipTimerId = null;
+    }
+    dom.comboChip.classList.add("hidden");
+  }
+
+  function showComboChip(combo, bonus) {
+    if (combo < 2 || bonus <= 0) {
+      hideComboChip();
+      return;
+    }
+
+    if (state.comboChipTimerId) {
+      window.clearTimeout(state.comboChipTimerId);
+    }
+
+    dom.comboChip.textContent = `콤보 x${combo} +${bonus}`;
+    dom.comboChip.classList.remove("hidden");
+    state.comboChipTimerId = window.setTimeout(() => {
+      hideComboChip();
+    }, 1800);
+  }
+
+  function updateRecordChip() {
+    const shouldShow = isSingleMode() && state.isGameActive;
+    dom.recordChip.classList.toggle("hidden", !shouldShow);
+    if (!shouldShow) return;
+    dom.recordChip.textContent = `BEST ${state.records.bestScore} · 최고 x${state.records.bestCombo}`;
+  }
+
+  function updateHintButton() {
+    const show = isSingleMode() && state.isGameActive;
+    dom.hintBtn.classList.toggle("hidden", !show);
+    if (!show) return;
+
+    const now = Date.now();
+    const remaining = Math.max(0, state.singleStats.hintCooldownUntil - now);
+
+    if (state.singleStats.hintUsesLeft <= 0) {
+      dom.hintBtn.disabled = true;
+      dom.hintBtn.textContent = "힌트 종료";
+      return;
+    }
+
+    if (remaining > 0) {
+      dom.hintBtn.disabled = true;
+      dom.hintBtn.textContent = `힌트 ${Math.ceil(remaining / 1000)}s`;
+      return;
+    }
+
+    dom.hintBtn.disabled = false;
+    dom.hintBtn.textContent = `힌트 ${state.singleStats.hintUsesLeft}`;
   }
 
   function updateModeUI() {
     if (dom.modeHint) {
       if (state.mode === "menu") {
         dom.modeHint.textContent = "공통 9x18 보드";
+      } else if (isSingleMode()) {
+        const base = `${state.singleConfig.label} · 9x18`;
+        dom.modeHint.textContent = state.singleConfig.modeId === "timeattack"
+          ? `${base} · ${state.singleConfig.duration}초`
+          : base;
       } else {
-        dom.modeHint.textContent = isSingleMode() ? "싱글 9x18 보드" : "온라인 1:1 9x18 보드";
+        dom.modeHint.textContent = "온라인 1:1 · 공통 9x18 보드";
       }
     }
 
-    const restartLabel = isSingleMode() ? "다시하기" : "대기실로 돌아가기";
-    const restartBtn = document.getElementById("restartBtn");
-    if (restartBtn) restartBtn.textContent = restartLabel;
-    const restartModalBtn = document.getElementById("restartBtnModal");
-    if (restartModalBtn) restartModalBtn.textContent = restartLabel;
-
-    if (!isOnlineMode()) {
-      dom.opponentCard.classList.add("hidden");
-    }
-
+    updateRecordChip();
+    updateHintButton();
     updateScoreboardLabels();
   }
 
@@ -257,12 +468,14 @@
   function updateMobileOrientationUI() {
     const isMobile = window.innerWidth <= 900;
     const isPortrait = window.innerHeight > window.innerWidth;
+    const hasOverlayOpen =
+      !dom.startOverlay.classList.contains("hidden")
+      || !dom.roomOverlay.classList.contains("hidden")
+      || !dom.settingsOverlay.classList.contains("hidden")
+      || dom.gameOver.classList.contains("show");
 
-    if (isMobile && isPortrait) {
-      dom.rotateOverlay.classList.remove("hidden");
-    } else {
-      dom.rotateOverlay.classList.add("hidden");
-    }
+    const shouldShowRotate = isMobile && isPortrait && state.isGameActive && !hasOverlayOpen;
+    dom.rotateOverlay.classList.toggle("hidden", !shouldShowRotate);
   }
 
   function createSeededRandom(seed) {
@@ -307,112 +520,24 @@
     state.board = cloneBoard(board);
   }
 
-  function updateScore() {
-    dom.scoreValue.textContent = String(state.score);
-  }
-
-  function updateOpponentScore(value = 0) {
-    dom.opponentScoreValue.textContent = String(value);
-  }
-
-  function updateScoresFromPlayers(players = []) {
-    const me = players.find((player) => player.socketId === state.mySocketId);
-    const opponent = players.find((player) => player.socketId !== state.mySocketId);
-
-    state.score = typeof me?.score === "number" ? me.score : 0;
-    updateScore();
-    updateOpponentScore(typeof opponent?.score === "number" ? opponent.score : 0);
-    updateScoreboardLabels(players);
-  }
-
-  function resetPlayState() {
-    state.isGameActive = false;
-    state.isDragging = false;
-    state.isResolving = false;
-    state.activePointerId = null;
-    state.dragStart = null;
-    state.dragCurrent = null;
-    state.selectedPositions = [];
-    state.dragVisitedKeys = new Set();
-    state.lastDragFeedbackAt = 0;
-  }
-
-  function prepareGameStart() {
-    resetPlayState();
-    state.isGameActive = true;
-    hideGameOver();
-    hideToast();
-    clearSelectionVisuals();
-  }
-
-  function isBoardFullyRemovedLocal(board = state.board) {
-    for (const row of board) {
-      for (const cell of row) {
-        if (!cell.removed) return false;
-      }
+  function ensureDropLayer() {
+    if (state.dropLayer && state.dropLayer.isConnected) {
+      return state.dropLayer;
     }
-    return true;
-  }
 
-  function computeTimeLeft() {
-    if (!state.endsAt) return state.timeLeft;
-    return Math.max(0, Math.ceil((state.endsAt - Date.now()) / 1000));
-  }
+    const layer = document.createElement("div");
+    layer.id = "dropLayer";
+    Object.assign(layer.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+      overflow: "visible",
+      zIndex: "8"
+    });
 
-  function updateTime() {
-    state.timeLeft = computeTimeLeft();
-    dom.timeValue.textContent = String(state.timeLeft);
-    const ratio = clamp(state.timeLeft / state.DURATION, 0, 1);
-    dom.timeBarFill.style.width = `${ratio * 100}%`;
-    dom.timeValue.classList.toggle("time-warning", state.timeLeft <= 10);
-  }
-
-  function hideGameOver() {
-    dom.gameOver.classList.remove("show");
-  }
-
-  function showGameOver() {
-    dom.finalScore.textContent = String(state.score);
-    dom.gameOver.classList.add("show");
-  }
-
-  function clearTimer() {
-    if (state.timerId !== null) {
-      window.clearInterval(state.timerId);
-      state.timerId = null;
-    }
-  }
-
-  function startTimer() {
-    clearTimer();
-
-    state.timerId = window.setInterval(() => {
-      updateTime();
-
-      if (state.timeLeft <= 0) {
-        clearTimer();
-        state.isGameActive = false;
-        state.isResolving = false;
-        cancelDrag(false);
-
-        if (isSingleMode()) {
-          finishSingleGame("timeup");
-        }
-      }
-    }, 200);
-  }
-
-  function buildCellMarkup(value) {
-    return `
-      <div class="apple" aria-hidden="true">
-        <span class="apple-stem"></span>
-        <span class="apple-leaf"></span>
-        <span class="apple-body"></span>
-        <span class="apple-notch"></span>
-        <span class="apple-glow"></span>
-        <span class="apple-num">${value}</span>
-      </div>
-    `;
+    dom.boardFrame.appendChild(layer);
+    state.dropLayer = layer;
+    return layer;
   }
 
   function scheduleBoardLayout() {
@@ -427,6 +552,10 @@
 
       if (state.isDragging && state.dragStart && state.dragCurrent) {
         updateSelection(state.dragStart, state.dragCurrent);
+      }
+
+      if (state.hintPreview) {
+        paintHintPreview(state.hintPreview);
       }
     });
   }
@@ -490,7 +619,7 @@
 
   function resetCellHighlight(cell) {
     if (!cell) return;
-    cell.classList.remove("selected", "good");
+    cell.classList.remove("selected", "good", "hint-preview");
 
     const apple = cell.querySelector(".apple");
     if (apple) {
@@ -523,7 +652,16 @@
         cell.className = "cell";
         cell.dataset.row = String(row);
         cell.dataset.col = String(col);
-        cell.innerHTML = buildCellMarkup(state.board[row][col].value);
+        cell.innerHTML = `
+          <div class="apple" aria-hidden="true">
+            <span class="apple-stem"></span>
+            <span class="apple-leaf"></span>
+            <span class="apple-body"></span>
+            <span class="apple-notch"></span>
+            <span class="apple-glow"></span>
+            <span class="apple-num">${state.board[row][col].value}</span>
+          </div>
+        `;
         dom.board.appendChild(cell);
         rowEls.push(cell);
       }
@@ -570,6 +708,93 @@
     scheduleBoardLayout();
   }
 
+  function clearSelectionVisuals() {
+    for (let row = 0; row < state.cellEls.length; row += 1) {
+      for (let col = 0; col < state.cellEls[row].length; col += 1) {
+        const cell = state.cellEls[row][col];
+        cell.classList.remove("selected", "good");
+      }
+    }
+
+    dom.selectionRect.style.display = "none";
+    dom.selectionRect.classList.remove("good");
+  }
+
+  function clearHintPreview() {
+    if (state.hintPreviewTimerId) {
+      window.clearTimeout(state.hintPreviewTimerId);
+      state.hintPreviewTimerId = null;
+    }
+
+    state.hintPreview = null;
+    dom.hintRect.style.display = "none";
+
+    for (let row = 0; row < state.cellEls.length; row += 1) {
+      for (let col = 0; col < state.cellEls[row].length; col += 1) {
+        state.cellEls[row][col].classList.remove("hint-preview");
+      }
+    }
+  }
+
+  function paintSelectedCells(isGood) {
+    clearSelectionVisuals();
+
+    for (const pos of state.selectedPositions) {
+      if (!state.board[pos.row][pos.col].removed) {
+        const cell = state.cellEls[pos.row][pos.col];
+        cell.classList.add("selected");
+        if (isGood) cell.classList.add("good");
+      }
+    }
+  }
+
+  function updateSelectionRect(target, minRow, minCol, maxRow, maxCol, className = "") {
+    const firstCell = state.cellEls[minRow][minCol];
+    const lastCell = state.cellEls[maxRow][maxCol];
+    if (!firstCell || !lastCell) return;
+
+    const frameRect = dom.boardFrame.getBoundingClientRect();
+    const firstRect = firstCell.getBoundingClientRect();
+    const lastRect = lastCell.getBoundingClientRect();
+
+    const left = firstRect.left - frameRect.left;
+    const top = firstRect.top - frameRect.top;
+    const right = lastRect.right - frameRect.left;
+    const bottom = lastRect.bottom - frameRect.top;
+
+    target.style.left = `${left}px`;
+    target.style.top = `${top}px`;
+    target.style.width = `${right - left}px`;
+    target.style.height = `${bottom - top}px`;
+    target.style.display = "block";
+    if (target === dom.selectionRect) {
+      target.classList.toggle("good", className === "good");
+    }
+  }
+
+  function paintHintPreview(preview) {
+    if (!preview) return;
+    clearHintPreview();
+    state.hintPreview = preview;
+
+    preview.positions.forEach((pos) => {
+      const cell = state.cellEls[pos.row]?.[pos.col];
+      cell?.classList.add("hint-preview");
+    });
+
+    updateSelectionRect(
+      dom.hintRect,
+      preview.minRow,
+      preview.minCol,
+      preview.maxRow,
+      preview.maxCol
+    );
+
+    state.hintPreviewTimerId = window.setTimeout(() => {
+      clearHintPreview();
+    }, HINT_DURATION_MS);
+  }
+
   function getCellFromClient(clientX, clientY, options = {}) {
     const { clampToBoard = false, forgiving = false } = options;
 
@@ -589,9 +814,7 @@
     if (!clampToBoard) {
       const outsideX = x < -boundsX || x > layout.boardRect.width + boundsX;
       const outsideY = y < -boundsY || y > layout.boardRect.height + boundsY;
-      if (outsideX || outsideY) {
-        return null;
-      }
+      if (outsideX || outsideY) return null;
     }
 
     x = clamp(x, 0, Math.max(0, layout.boardRect.width - 1));
@@ -609,51 +832,6 @@
     );
 
     return { row, col };
-  }
-
-  function clearSelectionVisuals() {
-    for (let row = 0; row < state.cellEls.length; row += 1) {
-      for (let col = 0; col < state.cellEls[row].length; col += 1) {
-        resetCellHighlight(state.cellEls[row][col]);
-      }
-    }
-
-    dom.selectionRect.style.display = "none";
-    dom.selectionRect.classList.remove("good");
-  }
-
-  function paintSelectedCells(isGood) {
-    clearSelectionVisuals();
-
-    for (const pos of state.selectedPositions) {
-      if (!state.board[pos.row][pos.col].removed) {
-        const cell = state.cellEls[pos.row][pos.col];
-        cell.classList.add("selected");
-        if (isGood) cell.classList.add("good");
-      }
-    }
-  }
-
-  function updateSelectionRect(minRow, minCol, maxRow, maxCol, isGood) {
-    const firstCell = state.cellEls[minRow][minCol];
-    const lastCell = state.cellEls[maxRow][maxCol];
-    if (!firstCell || !lastCell) return;
-
-    const frameRect = dom.boardFrame.getBoundingClientRect();
-    const firstRect = firstCell.getBoundingClientRect();
-    const lastRect = lastCell.getBoundingClientRect();
-
-    const left = firstRect.left - frameRect.left;
-    const top = firstRect.top - frameRect.top;
-    const right = lastRect.right - frameRect.left;
-    const bottom = lastRect.bottom - frameRect.top;
-
-    dom.selectionRect.style.left = `${left}px`;
-    dom.selectionRect.style.top = `${top}px`;
-    dom.selectionRect.style.width = `${right - left}px`;
-    dom.selectionRect.style.height = `${bottom - top}px`;
-    dom.selectionRect.style.display = "block";
-    dom.selectionRect.classList.toggle("good", isGood);
   }
 
   function updateSelection(start, end) {
@@ -678,7 +856,7 @@
 
     const isGood = count > 0 && sum === 10;
     paintSelectedCells(isGood);
-    updateSelectionRect(minRow, minCol, maxRow, maxCol, isGood);
+    updateSelectionRect(dom.selectionRect, minRow, minCol, maxRow, maxCol, isGood ? "good" : "");
   }
 
   function cancelDrag(clearToast = false) {
@@ -693,6 +871,46 @@
 
     if (clearToast) {
       hideToast();
+    }
+  }
+
+  function triggerDragEntryFeedback(pos, options = {}) {
+    if (!pos) return;
+
+    const { force = false } = options;
+    const cellData = state.board[pos.row]?.[pos.col];
+    if (!cellData || cellData.removed) return;
+
+    const key = getCellKey(pos);
+    if (!force && state.dragVisitedKeys.has(key)) return;
+    state.dragVisitedKeys.add(key);
+
+    const cell = state.cellEls[pos.row]?.[pos.col];
+    if (!cell) return;
+
+    if (cell._dragEntryTimer) {
+      window.clearTimeout(cell._dragEntryTimer);
+      cell._dragEntryTimer = null;
+    }
+
+    cell.classList.remove("drag-entry");
+    void cell.offsetWidth;
+    cell.classList.add("drag-entry");
+    cell._dragEntryTimer = window.setTimeout(() => {
+      cell.classList.remove("drag-entry");
+      cell._dragEntryTimer = null;
+    }, 150);
+
+    const now = performance.now();
+    if (now - state.lastDragFeedbackAt < DRAG_FEEDBACK_THROTTLE_MS) return;
+
+    state.lastDragFeedbackAt = now;
+    App.audio.playSelectSound();
+
+    if (canUseTouchVibration()) {
+      try {
+        window.navigator.vibrate(12);
+      } catch (error) {}
     }
   }
 
@@ -739,23 +957,13 @@
       const fallY = boardHeight + 120 + Math.random() * 44;
       const duration = 860 + Math.min(index * 16, 96);
 
-      const x0 = 0;
-      const x1 = driftX * 0.18;
-      const x2 = driftX * 0.72;
-      const x3 = driftX;
-
-      const y0 = 0;
-      const y1 = -liftY;
-      const y2 = fallY * 0.34;
-      const y3 = fallY;
-
       const keyframes = [];
       const steps = 90;
 
       for (let i = 0; i < steps; i += 1) {
         const t = i / (steps - 1);
-        const x = cubicCurve(t, x0, x1, x2, x3);
-        const y = cubicCurve(t, y0, y1, y2, y3);
+        const x = cubicCurve(t, 0, driftX * 0.18, driftX * 0.72, driftX);
+        const y = cubicCurve(t, 0, -liftY, fallY * 0.34, fallY);
         const wobble = Math.sin(t * Math.PI * 2.35) * (1 - t) * (4 + Math.abs(driftX) * 0.03);
         const rotate = (driftX * 0.22 * t) + wobble;
         const squash = Math.max(0, 1 - (t / 0.16));
@@ -784,51 +992,329 @@
     });
   }
 
-  async function handleBoardUpdate({ board, players, removedPositions = [], bySocketId = null, endsAt = null } = {}) {
-    if (!Array.isArray(board)) return;
+  function resetSingleStats() {
+    state.singleStats = {
+      removedCount: 0,
+      currentCombo: 0,
+      bestCombo: 0,
+      lastClearAt: 0,
+      perfectClear: false,
+      hintUsesLeft: HINT_MAX_USES,
+      hintCooldownUntil: 0
+    };
+    hideComboChip();
+    clearHintPreview();
+    updateHintButton();
+  }
 
-    const positions = Array.isArray(removedPositions) ? removedPositions : [];
-    const wasDragging = state.isDragging;
-    const oldRows = state.ROWS;
-    const oldCols = state.COLS;
+  function resetPlayState() {
+    state.isGameActive = false;
+    state.isDragging = false;
+    state.isResolving = false;
+    state.activePointerId = null;
+    state.dragStart = null;
+    state.dragCurrent = null;
+    state.selectedPositions = [];
+    state.dragVisitedKeys = new Set();
+    state.lastDragFeedbackAt = 0;
+    clearHintPreview();
+    hideComboChip();
+  }
 
-    setBoard(board, board.length || state.ROWS, board[0]?.length || state.COLS);
-
-    if (typeof endsAt === "number") {
-      state.endsAt = endsAt;
+  function clearTimer() {
+    if (state.timerId !== null) {
+      window.clearInterval(state.timerId);
+      state.timerId = null;
     }
+  }
 
-    if (Array.isArray(players) && players.length) {
-      state.currentRoom = {
-        ...(state.currentRoom || {}),
-        players
-      };
+  function computeTimeLeft() {
+    if (!state.endsAt) return state.timeLeft;
+    return Math.max(0, Math.ceil((state.endsAt - Date.now()) / 1000));
+  }
+
+  function updateTime() {
+    state.timeLeft = computeTimeLeft();
+    dom.timeValue.textContent = String(state.timeLeft);
+    const ratio = clamp(state.timeLeft / state.DURATION, 0, 1);
+    dom.timeBarFill.style.width = `${ratio * 100}%`;
+    dom.timeValue.classList.toggle("time-warning", state.timeLeft <= 10);
+    updateHintButton();
+  }
+
+  function hideGameOver() {
+    dom.gameOver.classList.remove("show");
+    updateMobileOrientationUI();
+  }
+
+  function applyResultScreen(config) {
+    const resultClass = config.resultClass || "result-neutral";
+    dom.resultCard.className = `game-over-card ${resultClass}`;
+    dom.resultModeBadge.textContent = config.modeBadge || "RESULT";
+    dom.resultStatePill.textContent = config.stateBadge || "RESULT";
+    dom.resultIcon.textContent = config.icon || "★";
+    dom.resultTitle.textContent = config.title || "게임 종료";
+    dom.resultText.textContent = config.text || "";
+    dom.resultMeta.textContent = config.meta || "";
+    dom.resultStat1Label.textContent = config.stat1Label || "점수";
+    dom.finalScore.textContent = String(config.stat1Value ?? 0);
+    dom.resultStat2Label.textContent = config.stat2Label || "최고 콤보";
+    dom.resultStat2Value.textContent = String(config.stat2Value ?? "x0");
+    dom.resultStat3Label.textContent = config.stat3Label || "클리어율";
+    dom.resultStat3Value.textContent = String(config.stat3Value ?? "0%");
+    dom.restartBtnModal.classList.toggle("hidden", !config.showRestart);
+    dom.rematchBtn.classList.toggle("hidden", !config.showRematch);
+    if (config.rematchText) {
+      dom.rematchBtn.textContent = config.rematchText;
     }
+  }
 
-    updateScoresFromPlayers(players || []);
+  function showGameOver(config) {
+    applyResultScreen(config);
+    dom.gameOver.classList.add("show");
+    updateMobileOrientationUI();
+  }
 
-    if (wasDragging) {
-      cancelDrag(false);
-    } else {
-      clearSelectionVisuals();
-    }
+  function prepareGameStart() {
+    resetPlayState();
+    state.isGameActive = true;
+    hideGameOver();
+    hideToast();
+    clearSelectionVisuals();
+    updateModeUI();
+  }
 
-    if (oldRows !== state.ROWS || oldCols !== state.COLS || state.cellEls.length === 0) {
-      renderBoard();
-      state.isResolving = false;
+  function updateOnlineRematchState() {
+    if (!isOnlineMode() || !dom.gameOver.classList.contains("show") || dom.rematchBtn.classList.contains("hidden")) {
       return;
     }
 
-    if (positions.length > 0) {
-      if (bySocketId && bySocketId === state.mySocketId) {
-        App.audio.playSuccessSound();
-      }
-      animateRemoval(positions);
+    const players = state.currentRoom?.players || [];
+    const me = players.find((player) => player.socketId === state.mySocketId);
+    const readyCount = players.filter((player) => player.ready).length;
+    const myReady = Boolean(me?.ready);
+
+    dom.rematchBtn.textContent = myReady ? "재대결 취소" : "재대결";
+
+    if (players.length < 2) {
+      dom.resultMeta.textContent = "상대가 떠나면 대기실로 돌아갑니다.";
+      return;
     }
 
-    syncBoardVisuals();
-    scheduleBoardLayout();
+    if (myReady) {
+      dom.resultMeta.textContent = `재대결 대기 중 (${readyCount}/2)`;
+      return;
+    }
+
+    dom.resultMeta.textContent = readyCount > 0
+      ? `상대가 재대결을 준비했습니다 (${readyCount}/2)`
+      : "둘 다 재대결을 누르면 같은 방에서 바로 다음 판이 시작됩니다.";
+  }
+
+  function renderRoom(room) {
+    state.currentRoom = room;
+    if (dom.roomCodeBox) {
+      dom.roomCodeBox.textContent = room.code;
+    }
+
+    dom.roomPlayerList.innerHTML = room.players
+      .map((player) => {
+        const readyClass = player.ready ? "ready" : "not-ready";
+        const readyText = player.ready ? "준비 완료" : "대기 중";
+        const name = `${player.name}${player.socketId === state.mySocketId ? " (나)" : ""}`;
+        return `
+          <div class="room-player-item">
+            <span class="room-player-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+            <span class="${readyClass}">${readyText}</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    const me = room.players.find((player) => player.socketId === state.mySocketId);
+    const opponent = room.players.find((player) => player.socketId !== state.mySocketId);
+
+    updateOpponentScore(opponent && typeof opponent.score === "number" ? opponent.score : 0);
+    updateScoreboardLabels(room.players);
+    dom.readyBtn.textContent = me && me.ready ? "준비 취소" : "준비하기";
+    updateOnlineRematchState();
+  }
+
+  function showLobbyError(text) {
+    const errorEl = document.getElementById("lobbyError");
+    if (errorEl) errorEl.textContent = text || "";
+  }
+
+  function isBoardFullyRemovedLocal(board = state.board) {
+    for (const row of board) {
+      for (const cell of row) {
+        if (!cell.removed) return false;
+      }
+    }
+    return true;
+  }
+
+  function findHintRange() {
+    const rows = state.ROWS;
+    const cols = state.COLS;
+    const sumPrefix = Array.from({ length: rows + 1 }, () => Array(cols + 1).fill(0));
+    const countPrefix = Array.from({ length: rows + 1 }, () => Array(cols + 1).fill(0));
+
+    for (let row = 0; row < rows; row += 1) {
+      for (let col = 0; col < cols; col += 1) {
+        const activeValue = state.board[row][col].removed ? 0 : state.board[row][col].value;
+        const activeCount = state.board[row][col].removed ? 0 : 1;
+        sumPrefix[row + 1][col + 1] =
+          sumPrefix[row][col + 1] + sumPrefix[row + 1][col] - sumPrefix[row][col] + activeValue;
+        countPrefix[row + 1][col + 1] =
+          countPrefix[row][col + 1] + countPrefix[row + 1][col] - countPrefix[row][col] + activeCount;
+      }
+    }
+
+    const getRect = (prefix, minRow, minCol, maxRow, maxCol) =>
+      prefix[maxRow + 1][maxCol + 1]
+      - prefix[minRow][maxCol + 1]
+      - prefix[maxRow + 1][minCol]
+      + prefix[minRow][minCol];
+
+    for (let minRow = 0; minRow < rows; minRow += 1) {
+      for (let minCol = 0; minCol < cols; minCol += 1) {
+        for (let maxRow = minRow; maxRow < rows; maxRow += 1) {
+          for (let maxCol = minCol; maxCol < cols; maxCol += 1) {
+            const activeCount = getRect(countPrefix, minRow, minCol, maxRow, maxCol);
+            if (!activeCount) continue;
+            const activeSum = getRect(sumPrefix, minRow, minCol, maxRow, maxCol);
+            if (activeSum !== 10) continue;
+
+            const positions = [];
+            for (let row = minRow; row <= maxRow; row += 1) {
+              for (let col = minCol; col <= maxCol; col += 1) {
+                if (!state.board[row][col].removed) {
+                  positions.push({ row, col });
+                }
+              }
+            }
+
+            if (positions.length > 0) {
+              return { minRow, minCol, maxRow, maxCol, positions };
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function useHint() {
+    if (!isSingleMode() || !state.isGameActive) return;
+
+    const now = Date.now();
+    if (state.singleStats.hintUsesLeft <= 0) {
+      setMessage("이번 판의 힌트는 모두 사용했어요.", "bad");
+      return;
+    }
+
+    if (state.singleStats.hintCooldownUntil > now) {
+      setMessage(`힌트는 ${Math.ceil((state.singleStats.hintCooldownUntil - now) / 1000)}초 뒤에 다시 사용할 수 있어요.`, "bad");
+      return;
+    }
+
+    const hint = findHintRange();
+    if (!hint) {
+      setMessage("지금 보드에는 표시할 힌트가 없어요.", "bad");
+      return;
+    }
+
+    state.singleStats.hintUsesLeft -= 1;
+    state.singleStats.hintCooldownUntil = now + HINT_COOLDOWN_MS;
+    paintHintPreview(hint);
+    updateHintButton();
+    setMessage("가능한 합 10 범위를 표시했어요.", "good", { duration: 1200 });
+  }
+
+  function buildSingleSummary() {
+    const clearRate = Math.round((state.singleStats.removedCount / getSingleCellCount()) * 100);
+    return {
+      score: state.score,
+      bestCombo: state.singleStats.bestCombo,
+      clearRate,
+      perfectClear: state.singleStats.perfectClear
+    };
+  }
+
+  function finishSingleGame(reason = "timeup") {
+    clearTimer();
+    state.isGameActive = false;
     state.isResolving = false;
+    cancelDrag(false);
+    updateHintButton();
+
+    const summary = buildSingleSummary();
+    const recordFlags = persistSingleRecords(summary);
+
+    if (state.singleConfig.modeId === "daily" && state.singleConfig.dailyKey) {
+      markDailyPlayed(state.singleConfig.dailyKey);
+    }
+
+    let resultClass = "result-draw";
+    let icon = "⌛";
+    let title = "시간 종료";
+    let text = "이번 판이 종료되었습니다.";
+    let resultSound = "draw";
+
+    if (reason === "perfectClear") {
+      resultClass = "result-clear";
+      icon = "👑";
+      title = "퍼펙트 클리어";
+      text = `보드를 모두 지우고 보너스 +${PERFECT_CLEAR_BONUS}점을 획득했어요.`;
+      resultSound = "win";
+    }
+
+    const notes = [];
+    if (recordFlags.bestScore) notes.push("새 최고 점수");
+    if (recordFlags.bestCombo) notes.push("새 최고 콤보");
+    if (recordFlags.bestClearRate) notes.push("새 최고 클리어율");
+    if (recordFlags.perfectClear) notes.push("퍼펙트 기록 갱신");
+
+    showGameOver({
+      resultClass,
+      modeBadge: state.singleConfig.label.toUpperCase(),
+      stateBadge: reason === "perfectClear" ? "PERFECT" : "RESULT",
+      icon,
+      title,
+      text,
+      meta: notes.length ? notes.join(" · ") : "싱글 최고기록은 시작 화면에도 바로 반영됩니다.",
+      stat1Label: "점수",
+      stat1Value: summary.score,
+      stat2Label: "최고 콤보",
+      stat2Value: `x${summary.bestCombo}`,
+      stat3Label: "클리어율",
+      stat3Value: `${summary.clearRate}%`,
+      showRestart: true,
+      showRematch: false
+    });
+
+    App.audio.playResultSound(resultSound);
+  }
+
+  function startTimer() {
+    clearTimer();
+
+    state.timerId = window.setInterval(() => {
+      updateTime();
+
+      if (state.timeLeft <= 0) {
+        clearTimer();
+        state.isGameActive = false;
+        state.isResolving = false;
+        cancelDrag(false);
+
+        if (isSingleMode()) {
+          finishSingleGame("timeup");
+        }
+      }
+    }, 200);
   }
 
   async function applyLocalSelection(positions) {
@@ -836,18 +1322,35 @@
       state.board[row][col].removed = true;
     });
 
-    state.score += positions.length;
-    updateScore();
-    App.audio.playSuccessSound();
+    const now = Date.now();
+    const baseScore = positions.length;
+    state.singleStats.removedCount += baseScore;
+    state.singleStats.currentCombo =
+      now - state.singleStats.lastClearAt <= COMBO_WINDOW_MS
+        ? state.singleStats.currentCombo + 1
+        : 1;
+    state.singleStats.lastClearAt = now;
+    state.singleStats.bestCombo = Math.max(state.singleStats.bestCombo, state.singleStats.currentCombo);
 
+    const comboBonus = state.singleStats.currentCombo >= 2 ? state.singleStats.currentCombo * 2 : 0;
+    state.score += baseScore + comboBonus;
+    updateScore();
+    updateRecordChip();
+    showComboChip(state.singleStats.currentCombo, comboBonus);
+
+    App.audio.playSuccessSound();
     animateRemoval(positions);
     syncBoardVisuals();
     scheduleBoardLayout();
-
     state.isResolving = false;
 
     if (isBoardFullyRemovedLocal()) {
-      finishSingleGame("boardCleared");
+      state.singleStats.perfectClear = true;
+      state.score += PERFECT_CLEAR_BONUS;
+      updateScore();
+      updateRecordChip();
+      setMessage(`퍼펙트 클리어 +${PERFECT_CLEAR_BONUS}`, "good", { duration: 1300 });
+      finishSingleGame("perfectClear");
     }
   }
 
@@ -895,49 +1398,229 @@
 
     socket.emit("game:attemptSelect", payload, (response) => {
       if (response?.ok) return;
-
       state.isResolving = false;
       App.audio.playFailSound();
     });
   }
 
-  function renderRoom(room) {
-    setMode("online");
-    state.currentRoom = room;
-    dom.roomCodeBox.textContent = room.code;
+  async function handleBoardUpdate({ board, players, removedPositions = [], bySocketId = null, endsAt = null } = {}) {
+    if (!Array.isArray(board)) return;
 
-    dom.roomPlayerList.innerHTML = room.players
-      .map((player) => {
-        const readyClass = player.ready ? "ready" : "not-ready";
-        const readyText = player.ready ? "준비 완료" : "대기 중";
-        return `
-          <div class="room-player-item">
-            <span>${player.name}${player.socketId === state.mySocketId ? " (나)" : ""}</span>
-            <span class="${readyClass}">${readyText}</span>
-          </div>
-        `;
-      })
-      .join("");
+    const positions = Array.isArray(removedPositions) ? removedPositions : [];
+    const wasDragging = state.isDragging;
+    const oldRows = state.ROWS;
+    const oldCols = state.COLS;
 
-    const me = room.players.find((player) => player.socketId === state.mySocketId);
-    const opponent = room.players.find((player) => player.socketId !== state.mySocketId);
+    setBoard(board, board.length || state.ROWS, board[0]?.length || state.COLS);
 
-    updateOpponentScore(opponent && typeof opponent.score === "number" ? opponent.score : 0);
-    updateScoreboardLabels(room.players);
-    dom.readyBtn.textContent = me && me.ready ? "준비 취소" : "준비하기";
+    if (typeof endsAt === "number") {
+      state.endsAt = endsAt;
+    }
+
+    if (Array.isArray(players) && players.length) {
+      state.currentRoom = {
+        ...(state.currentRoom || {}),
+        players
+      };
+    }
+
+    updateScoresFromPlayers(players || []);
+
+    if (wasDragging) {
+      cancelDrag(false);
+    } else {
+      clearSelectionVisuals();
+    }
+
+    clearHintPreview();
+
+    if (oldRows !== state.ROWS || oldCols !== state.COLS || state.cellEls.length === 0) {
+      renderBoard();
+      state.isResolving = false;
+      return;
+    }
+
+    if (positions.length > 0) {
+      if (bySocketId && bySocketId === state.mySocketId) {
+        App.audio.playSuccessSound();
+      }
+      animateRemoval(positions);
+    }
+
+    syncBoardVisuals();
+    scheduleBoardLayout();
+    state.isResolving = false;
   }
 
-  function showLobbyError(text) {
-    const safeText = text || "";
-    if (dom.lobbyError) dom.lobbyError.textContent = safeText;
-    if (dom.lobbyErrorMobile) dom.lobbyErrorMobile.textContent = safeText;
+  function buildSingleConfig(options = {}) {
+    const preset = SINGLE_MODE_PRESETS[options.modeId] || SINGLE_MODE_PRESETS.classic;
+    const seed = Number.isFinite(Number(options.seed))
+      ? Number(options.seed)
+      : Math.floor(Math.random() * 1000000000);
+
+    return {
+      modeId: options.modeId || "classic",
+      label: String(options.label || preset.label),
+      duration: Number.isFinite(Number(options.duration)) ? Number(options.duration) : preset.duration,
+      seed,
+      dailyKey: String(options.dailyKey || "")
+    };
+  }
+
+  function startSingleGame(options = {}) {
+    const config = buildSingleConfig(options);
+
+    setMode("single");
+    state.singleConfig = config;
+    state.lastSingleSeed = config.seed;
+    state.currentRoom = null;
+    state.mySocketId = "single-player";
+    state.myName = sanitizeName(options.playerName, "나");
+    state.myRoomCode = "";
+    state.ROWS = DEFAULT_ROWS;
+    state.COLS = DEFAULT_COLS;
+    state.DURATION = config.duration;
+    state.endsAt = Date.now() + (state.DURATION * 1000);
+    state.score = 0;
+
+    resetSingleStats();
+    updateScore();
+    updateOpponentScore(0);
+    updateScoreboardLabels();
+    dom.startOverlay.classList.add("hidden");
+    dom.roomOverlay.classList.add("hidden");
+
+    prepareGameStart();
+    setBoard(createPreviewBoard(config.seed), state.ROWS, state.COLS);
+    renderBoard();
+    updateTime();
+    startTimer();
+    App.audio.ensureAudio();
+    App.audio.playStartSound();
+  }
+
+  function restartSingleGame() {
+    const options = {
+      playerName: state.myName || "나",
+      modeId: state.singleConfig.modeId,
+      label: state.singleConfig.label,
+      duration: state.singleConfig.duration,
+      seed: state.singleConfig.modeId === "daily" ? state.singleConfig.seed : undefined,
+      dailyKey: state.singleConfig.dailyKey
+    };
+    startSingleGame(options);
+  }
+
+  function startSharedGame({ board, rows, cols, duration, endsAt, players } = {}) {
+    setMode("online");
+    state.ROWS = rows || state.ROWS;
+    state.COLS = cols || state.COLS;
+    state.DURATION = duration || state.DURATION;
+    state.endsAt = typeof endsAt === "number" ? endsAt : Date.now() + (state.DURATION * 1000);
+    state.currentRoom = {
+      ...(state.currentRoom || {}),
+      players: Array.isArray(players) ? players : state.currentRoom?.players || [],
+      gameStarted: true,
+      gameEnded: false
+    };
+
+    prepareGameStart();
+    setBoard(board || state.board, state.ROWS, state.COLS);
+    updateScoresFromPlayers(players || []);
+    renderBoard();
+    updateTime();
+    startTimer();
+  }
+
+  function handleGameStart(payload) {
+    App.audio.ensureAudio();
+    App.audio.playStartSound();
+    dom.roomOverlay.classList.add("hidden");
+    hideToast();
+    startSharedGame(payload);
+  }
+
+  function handleGameResult(result) {
+    if (isSingleMode()) return;
+
+    App.audio.ensureAudio();
+    state.isGameActive = false;
+    state.isResolving = false;
+    clearTimer();
+    cancelDrag(false);
+    clearHintPreview();
+    hideToast();
+
+    const myScoreEntry = result.scores.find((entry) => entry.socketId === state.mySocketId);
+    const opponentEntry = result.scores.find((entry) => entry.socketId !== state.mySocketId);
+    const winnerEntry = result.scores.find((entry) => entry.socketId === result.winnerSocketId);
+
+    if (myScoreEntry) {
+      state.score = myScoreEntry.score;
+      updateScore();
+    }
+    updateOpponentScore(opponentEntry?.score || 0);
+
+    if (state.currentRoom) {
+      state.currentRoom = {
+        ...state.currentRoom,
+        gameStarted: false,
+        gameEnded: true,
+        players: (state.currentRoom.players || []).map((player) => ({
+          ...player,
+          ready: false,
+          score: result.scores.find((entry) => entry.socketId === player.socketId)?.score || 0
+        }))
+      };
+    }
+
+    let resultClass = "result-draw";
+    let icon = "🤝";
+    let title = "무승부";
+    let text = "점수가 같아서 비겼습니다.";
+    let sound = "draw";
+
+    if (!result.draw && winnerEntry?.socketId === state.mySocketId) {
+      resultClass = "result-win";
+      icon = "🏆";
+      title = "승리";
+      text = "상대보다 높은 점수로 이번 판을 가져왔어요.";
+      sound = "win";
+    } else if (!result.draw && winnerEntry) {
+      resultClass = "result-lose";
+      icon = "⚑";
+      title = "패배";
+      text = `${winnerEntry.name} 플레이어가 이번 판에서 앞섰습니다.`;
+      sound = "lose";
+    }
+
+    showGameOver({
+      resultClass,
+      modeBadge: "ONLINE",
+      stateBadge: "REMATCH",
+      icon,
+      title,
+      text,
+      meta: "둘 다 재대결을 누르면 같은 방에서 다음 판이 시작됩니다.",
+      stat1Label: "내 점수",
+      stat1Value: myScoreEntry?.score || 0,
+      stat2Label: "상대 점수",
+      stat2Value: opponentEntry ? String(opponentEntry.score) : "-",
+      stat3Label: "방 코드",
+      stat3Value: state.myRoomCode || "-",
+      showRestart: false,
+      showRematch: true,
+      rematchText: "재대결"
+    });
+
+    updateOnlineRematchState();
+    App.audio.playResultSound(sound);
   }
 
   function resetToStartOverlay() {
     setMode("menu");
     state.currentRoom = null;
     state.mySocketId = null;
-    state.myName = "";
     state.myRoomCode = "";
     state.ROWS = DEFAULT_ROWS;
     state.COLS = DEFAULT_COLS;
@@ -958,6 +1641,7 @@
     createPreviewBoard(1);
     renderBoard();
     updateTime();
+    emitMenuDataChange();
   }
 
   function setPlayerIdentity({ socketId = null, name = "", roomCode = "" } = {}) {
@@ -972,119 +1656,12 @@
     hideGameOver();
     hideToast();
     dom.startOverlay.classList.add("hidden");
+    updateMobileOrientationUI();
   }
 
-  function startSharedGame({ board, rows, cols, duration, endsAt, players } = {}) {
-    setMode("online");
-    state.ROWS = rows || state.ROWS;
-    state.COLS = cols || state.COLS;
-    state.DURATION = duration || state.DURATION;
-    state.endsAt = typeof endsAt === "number" ? endsAt : Date.now() + (state.DURATION * 1000);
-    state.currentRoom = {
-      ...(state.currentRoom || {}),
-      players: Array.isArray(players) ? players : state.currentRoom?.players || []
-    };
-
-    prepareGameStart();
-    setBoard(board || state.board, state.ROWS, state.COLS);
-    updateScoresFromPlayers(players || []);
-    renderBoard();
-    updateTime();
-    startTimer();
-  }
-
-  function finishSingleGame(reason = "timeup") {
-    clearTimer();
-    state.isGameActive = false;
-    state.isResolving = false;
-    cancelDrag(false);
-
-    dom.finalScore.textContent = String(state.score);
-
-    if (reason === "boardCleared") {
-      dom.resultText.textContent = "클리어! 보드를 전부 지웠어요";
-      App.audio.playResultSound("win");
-    } else {
-      dom.resultText.textContent = "시간 종료";
-      App.audio.playResultSound("draw");
-    }
-
-    showGameOver();
-  }
-
-  function startSingleGame(displayName = "") {
-    setMode("single");
-    state.lastSingleSeed = Math.floor(Math.random() * 1000000000);
-    state.currentRoom = null;
-    state.mySocketId = "single-player";
-    state.myName = sanitizeName(displayName, "나");
-    state.myRoomCode = "";
-    state.ROWS = DEFAULT_ROWS;
-    state.COLS = DEFAULT_COLS;
-    state.DURATION = DEFAULT_DURATION;
-    state.endsAt = Date.now() + (state.DURATION * 1000);
-    state.score = 0;
-
-    updateScore();
-    updateOpponentScore(0);
-    updateScoreboardLabels();
-    dom.startOverlay.classList.add("hidden");
-    dom.roomOverlay.classList.add("hidden");
-
-    prepareGameStart();
-    setBoard(createPreviewBoard(state.lastSingleSeed), state.ROWS, state.COLS);
-    renderBoard();
-    updateTime();
-    startTimer();
-    App.audio.ensureAudio();
-    App.audio.playStartSound();
-  }
-
-  function restartSingleGame() {
-    hideGameOver();
-    startSingleGame(state.myName || "나");
-  }
-
-  function handleGameStart(payload) {
-    App.audio.ensureAudio();
-    App.audio.playStartSound();
-    dom.roomOverlay.classList.add("hidden");
-    hideToast();
-    startSharedGame(payload);
-  }
-
-  function handleGameResult(result) {
-    if (isSingleMode()) return;
-
-    App.audio.ensureAudio();
-    state.isGameActive = false;
-    state.isResolving = false;
-    clearTimer();
-    cancelDrag(false);
-    hideToast();
-
-    const myScoreEntry = result.scores.find((entry) => entry.socketId === state.mySocketId);
-    const winnerEntry = result.scores.find((entry) => entry.socketId === result.winnerSocketId);
-
-    if (myScoreEntry) {
-      state.score = myScoreEntry.score;
-      updateScore();
-    }
-
-    if (result.draw) {
-      dom.resultText.textContent = "무승부";
-      App.audio.playResultSound("draw");
-    } else if (winnerEntry && winnerEntry.socketId === state.mySocketId) {
-      dom.resultText.textContent = "승리!";
-      App.audio.playResultSound("win");
-    } else if (winnerEntry) {
-      dom.resultText.textContent = `패배 · 승자: ${winnerEntry.name}`;
-      App.audio.playResultSound("lose");
-    } else {
-      dom.resultText.textContent = "";
-    }
-
-    showGameOver();
+  function handleRoomUpdate(room) {
+    if (!room) return;
+    renderRoom(room);
   }
 
   function handleOpponentLeft(message) {
@@ -1098,15 +1675,20 @@
     setMessage(message || "상대가 나가서 대기실로 돌아갑니다.", "bad", { sticky: true });
     state.isGameActive = false;
     state.isResolving = false;
+    if (state.currentRoom) {
+      state.currentRoom.gameStarted = false;
+      state.currentRoom.gameEnded = false;
+    }
+    updateMobileOrientationUI();
   }
 
   function handleDisconnect() {
-    if (isSingleMode()) return;
-
+    if (isSingleMode() || state.mode === "menu") return;
     setMessage("서버 연결이 끊겼습니다.", "bad", { sticky: true });
     clearTimer();
     state.isGameActive = false;
     state.isResolving = false;
+    updateMobileOrientationUI();
   }
 
   function handleRestartIntent() {
@@ -1118,8 +1700,7 @@
       return;
     }
 
-    if (!state.currentRoom || !state.currentRoom.gameStarted) return;
-    window.alert("온라인 모드는 게임 종료 후 대기실에서 다시 준비해주세요.");
+    setMessage("온라인은 결과 화면에서 재대결을 선택해 주세요.", "bad", { duration: 1200 });
   }
 
   function initBoardObserver() {
@@ -1143,6 +1724,7 @@
       if (!pos) return;
 
       event.preventDefault();
+      clearHintPreview();
 
       state.isDragging = true;
       state.activePointerId = event.pointerId;
@@ -1217,6 +1799,12 @@
       updateMobileOrientationUI();
       scheduleBoardLayout();
     });
+
+    dom.hintBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      useHint();
+    });
   }
 
   function init() {
@@ -1237,6 +1825,7 @@
     updateScoreboardLabels();
     updateTime();
     hideToast();
+    emitMenuDataChange();
   }
 
   App.game = {
@@ -1247,6 +1836,7 @@
     hideGameOver,
     showLobbyError,
     renderRoom,
+    handleRoomUpdate,
     resetToStartOverlay,
     setPlayerIdentity,
     enterOnlineLobby,
@@ -1259,7 +1849,8 @@
     handleOpponentLeft,
     handleDisconnect,
     handleRestartIntent,
-    getState: () => state,
-    getDom: () => dom
+    setDailyChallenge,
+    getMenuData,
+    getState: () => state
   };
 })();
