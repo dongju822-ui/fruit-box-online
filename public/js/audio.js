@@ -1,17 +1,55 @@
 (() => {
   const App = window.App || (window.App = {});
 
+  const STORAGE_KEY = "fruitbox-audio-settings";
+  const DEFAULT_BGM_VOLUME = 0.38;
+  const DEFAULT_CLEAR_VOLUME = 1;
+  const SFX_VOLUME_MULTIPLIER = 2.4;
+  const SFX_MAX_VOLUME = 0.14;
+  const BGM_SRC = "/assets/bgm/3.mp3";
+
   const state = {
     audioCtx: null,
     audioUnlocked: false,
     bgmAudio: null,
-    lastSelectAt: 0
+    lastSelectAt: 0,
+    settings: loadSettings()
   };
 
-  const BGM_VOLUME = 0.38;
-  const SFX_VOLUME_MULTIPLIER = 2.4;
-  const SFX_MAX_VOLUME = 0.14;
-  const BGM_SRC = "/assets/bgm/3.mp3";
+  function clamp01(value, fallback = 0) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.max(0, Math.min(1, num));
+  }
+
+  function loadSettings() {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return {
+          bgmVolume: DEFAULT_BGM_VOLUME,
+          clearVolume: DEFAULT_CLEAR_VOLUME
+        };
+      }
+
+      const parsed = JSON.parse(raw);
+      return {
+        bgmVolume: clamp01(parsed?.bgmVolume, DEFAULT_BGM_VOLUME),
+        clearVolume: clamp01(parsed?.clearVolume, DEFAULT_CLEAR_VOLUME)
+      };
+    } catch (error) {
+      return {
+        bgmVolume: DEFAULT_BGM_VOLUME,
+        clearVolume: DEFAULT_CLEAR_VOLUME
+      };
+    }
+  }
+
+  function saveSettings() {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+    } catch (error) {}
+  }
 
   function ensureAudio() {
     if (!state.audioCtx) {
@@ -36,7 +74,7 @@
     const audio = new Audio(BGM_SRC);
     audio.loop = true;
     audio.preload = "auto";
-    audio.volume = BGM_VOLUME;
+    audio.volume = state.settings.bgmVolume;
     audio.crossOrigin = "anonymous";
 
     state.bgmAudio = audio;
@@ -47,7 +85,7 @@
     if (!state.audioUnlocked) return;
 
     const bgm = createBgmAudio();
-    bgm.volume = BGM_VOLUME;
+    bgm.volume = state.settings.bgmVolume;
 
     if (bgm.paused) {
       const playPromise = bgm.play();
@@ -68,7 +106,8 @@
     duration = 0.12,
     volume = 0.03,
     type = "triangle",
-    multiplier = 1
+    multiplier = 1,
+    gainScale = 1
   } = {}) {
     const ctx = ensureAudio();
     if (!ctx) return;
@@ -76,7 +115,11 @@
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    const finalVolume = Math.min(volume * multiplier, SFX_MAX_VOLUME);
+    const finalVolume = Math.min(volume * multiplier * gainScale, SFX_MAX_VOLUME);
+
+    if (finalVolume <= 0.0001) {
+      return;
+    }
 
     osc.type = type;
     osc.frequency.setValueAtTime(frequency, now);
@@ -96,8 +139,12 @@
     osc.stop(now + duration + 0.02);
   }
 
-  function playSfxTone(options) {
-    tone({ ...options, multiplier: SFX_VOLUME_MULTIPLIER });
+  function playSfxTone(options, gainScale = 1) {
+    tone({
+      ...options,
+      multiplier: SFX_VOLUME_MULTIPLIER,
+      gainScale
+    });
   }
 
   function playUiSound() {
@@ -113,12 +160,13 @@
   }
 
   function playSuccessSound() {
-    playSfxTone({ frequency: 700, endFrequency: 980, duration: 0.08, volume: 0.05, type: "triangle" });
+    const gainScale = state.settings.clearVolume;
+    playSfxTone({ frequency: 700, endFrequency: 980, duration: 0.08, volume: 0.05, type: "triangle" }, gainScale);
     window.setTimeout(() => {
-      playSfxTone({ frequency: 920, endFrequency: 1320, duration: 0.11, volume: 0.062, type: "triangle" });
+      playSfxTone({ frequency: 920, endFrequency: 1320, duration: 0.11, volume: 0.062, type: "triangle" }, gainScale);
     }, 38);
     window.setTimeout(() => {
-      playSfxTone({ frequency: 1180, endFrequency: 1680, duration: 0.095, volume: 0.055, type: "triangle" });
+      playSfxTone({ frequency: 1180, endFrequency: 1680, duration: 0.095, volume: 0.055, type: "triangle" }, gainScale);
     }, 96);
   }
 
@@ -158,6 +206,26 @@
     playSfxTone({ frequency: 360, endFrequency: 220, duration: 0.20, volume: 0.028, type: "square" });
   }
 
+  function setBgmVolume(value) {
+    state.settings.bgmVolume = clamp01(value, DEFAULT_BGM_VOLUME);
+    if (state.bgmAudio) {
+      state.bgmAudio.volume = state.settings.bgmVolume;
+    }
+    saveSettings();
+  }
+
+  function setClearVolume(value) {
+    state.settings.clearVolume = clamp01(value, DEFAULT_CLEAR_VOLUME);
+    saveSettings();
+  }
+
+  function getSettings() {
+    return {
+      bgmVolume: state.settings.bgmVolume,
+      clearVolume: state.settings.clearVolume
+    };
+  }
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       if (state.audioUnlocked && state.audioCtx && state.audioCtx.state === "suspended") {
@@ -177,6 +245,9 @@
     ensureAudio,
     startBgm,
     pauseBgm,
+    setBgmVolume,
+    setClearVolume,
+    getSettings,
     playUiSound,
     playSelectSound,
     playSuccessSound,

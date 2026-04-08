@@ -2,7 +2,23 @@
   const App = window.App || (window.App = {});
   const socket = io();
   const state = App.state || (App.state = {});
+  const NICKNAME_STORAGE_KEY = "fruitbox-player-name";
+
   state.socket = socket;
+
+  function loadSavedNickname() {
+    try {
+      return String(window.localStorage.getItem(NICKNAME_STORAGE_KEY) || "").trim().slice(0, 12);
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function saveNickname(value) {
+    try {
+      window.localStorage.setItem(NICKNAME_STORAGE_KEY, String(value || "").trim().slice(0, 12));
+    } catch (error) {}
+  }
 
   function initLobby() {
     const dom = {
@@ -17,15 +33,54 @@
       restartBtn: document.getElementById("restartBtn"),
       restartBtnTop: document.getElementById("restartBtnTop"),
       restartBtnModal: document.getElementById("restartBtnModal"),
+      openSettingsBtn: document.getElementById("openSettingsBtn"),
+      closeSettingsBtn: document.getElementById("closeSettingsBtn"),
+      settingsOverlay: document.getElementById("settingsOverlay"),
+      bgmVolumeSlider: document.getElementById("bgmVolumeSlider"),
+      clearVolumeSlider: document.getElementById("clearVolumeSlider"),
+      bgmVolumeValue: document.getElementById("bgmVolumeValue"),
+      clearVolumeValue: document.getElementById("clearVolumeValue"),
       startOverlay: document.getElementById("startOverlay"),
       roomOverlay: document.getElementById("roomOverlay")
     };
+
+    const savedName = loadSavedNickname();
+    if (savedName) {
+      dom.nameInput.value = savedName;
+    }
+
+    function syncSettingsUi() {
+      const settings = App.audio.getSettings();
+      const bgmPercent = Math.round(settings.bgmVolume * 100);
+      const clearPercent = Math.round(settings.clearVolume * 100);
+
+      dom.bgmVolumeSlider.value = String(bgmPercent);
+      dom.clearVolumeSlider.value = String(clearPercent);
+      dom.bgmVolumeValue.textContent = `${bgmPercent}%`;
+      dom.clearVolumeValue.textContent = `${clearPercent}%`;
+    }
+
+    function openSettings() {
+      App.audio.playUiSound();
+      syncSettingsUi();
+      dom.settingsOverlay.classList.remove("hidden");
+    }
+
+    function closeSettings() {
+      dom.settingsOverlay.classList.add("hidden");
+    }
+
+    function getPlayerName() {
+      const name = dom.nameInput.value.trim().slice(0, 12);
+      saveNickname(name);
+      return name;
+    }
 
     function triggerCreateRoom() {
       App.audio.ensureAudio();
       App.audio.playUiSound();
 
-      const name = dom.nameInput.value.trim();
+      const name = getPlayerName();
       socket.emit("room:create", { name }, (response) => {
         if (!response?.ok) {
           App.game.showLobbyError(response?.message);
@@ -50,7 +105,7 @@
       App.audio.ensureAudio();
       App.audio.playUiSound();
 
-      const name = dom.nameInput.value.trim();
+      const name = getPlayerName();
       const code = dom.roomCodeInput.value.trim().toUpperCase();
 
       socket.emit("room:join", { code, name }, (response) => {
@@ -76,17 +131,25 @@
     dom.singleModeBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
       App.audio.playUiSound();
-      App.game.startSingleGame();
+      App.game.startSingleGame(getPlayerName());
     });
 
     dom.createRoomBtn.addEventListener("click", triggerCreateRoom);
     dom.joinRoomBtn.addEventListener("click", triggerJoinRoom);
+
+    dom.nameInput.addEventListener("input", () => {
+      saveNickname(dom.nameInput.value);
+    });
 
     dom.nameInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         triggerCreateRoom();
       }
+    });
+
+    dom.roomCodeInput.addEventListener("input", () => {
+      dom.roomCodeInput.value = dom.roomCodeInput.value.toUpperCase();
     });
 
     dom.roomCodeInput.addEventListener("keydown", (event) => {
@@ -141,6 +204,42 @@
       socket.emit("room:resetLobby", {}, () => {});
     });
 
+    dom.openSettingsBtn.addEventListener("click", openSettings);
+    dom.closeSettingsBtn.addEventListener("click", () => {
+      App.audio.playUiSound();
+      closeSettings();
+    });
+
+    dom.settingsOverlay.addEventListener("click", (event) => {
+      if (event.target === dom.settingsOverlay) {
+        closeSettings();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !dom.settingsOverlay.classList.contains("hidden")) {
+        closeSettings();
+      }
+    });
+
+    dom.bgmVolumeSlider.addEventListener("input", () => {
+      const value = Number(dom.bgmVolumeSlider.value) / 100;
+      App.audio.ensureAudio();
+      App.audio.setBgmVolume(value);
+      dom.bgmVolumeValue.textContent = `${dom.bgmVolumeSlider.value}%`;
+    });
+
+    dom.clearVolumeSlider.addEventListener("input", () => {
+      const value = Number(dom.clearVolumeSlider.value) / 100;
+      App.audio.ensureAudio();
+      App.audio.setClearVolume(value);
+      dom.clearVolumeValue.textContent = `${dom.clearVolumeSlider.value}%`;
+    });
+
+    dom.clearVolumeSlider.addEventListener("change", () => {
+      App.audio.playSuccessSound();
+    });
+
     socket.on("room:update", (room) => {
       const currentState = App.game.getState();
       if (!currentState.mySocketId) return;
@@ -149,7 +248,7 @@
     });
 
     socket.on("room:message", ({ message }) => {
-      if (message) App.game.setMessage(message, "bad");
+      if (message) App.game.setMessage(message, "bad", { duration: 1200 });
     });
 
     socket.on("game:start", App.game.handleGameStart);
@@ -159,6 +258,8 @@
       App.game.handleOpponentLeft(message);
     });
     socket.on("disconnect", App.game.handleDisconnect);
+
+    syncSettingsUi();
   }
 
   document.addEventListener("DOMContentLoaded", () => {

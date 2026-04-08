@@ -1,6 +1,9 @@
-
 (() => {
   const App = window.App || (window.App = {});
+  const DEFAULT_ROWS = 9;
+  const DEFAULT_COLS = 18;
+  const DEFAULT_DURATION = 120;
+
   const state = App.state || (App.state = {
     socket: null,
     mySocketId: null,
@@ -9,13 +12,13 @@
     currentRoom: null,
     mode: "menu",
     lastSingleSeed: 1,
-    ROWS: 14,
-    COLS: 14,
-    DURATION: 120,
+    ROWS: DEFAULT_ROWS,
+    COLS: DEFAULT_COLS,
+    DURATION: DEFAULT_DURATION,
     board: [],
     cellEls: [],
     score: 0,
-    timeLeft: 120,
+    timeLeft: DEFAULT_DURATION,
     endsAt: null,
     timerId: null,
     isGameActive: false,
@@ -24,22 +27,37 @@
     activePointerId: null,
     dragStart: null,
     dragCurrent: null,
-    selectedPositions: []
+    selectedPositions: [],
+    layout: null,
+    boardLayoutRaf: null,
+    resizeObserver: null,
+    toastTimerId: null
   });
 
   const dom = {};
 
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function sanitizeName(name, fallback = "나") {
+    return String(name || "").trim().slice(0, 12) || fallback;
+  }
+
   function cacheDom() {
     dom.board = document.getElementById("board");
+    dom.boardStage = document.getElementById("boardStage");
     dom.boardFrame = document.getElementById("boardFrame");
     dom.selectionRect = document.getElementById("selectionRect");
     dom.timeValue = document.getElementById("timeValue");
     dom.timeBarFill = document.getElementById("timeBarFill");
+    dom.scoreLabel = document.getElementById("scoreLabel");
     dom.scoreValue = document.getElementById("scoreValue");
     dom.opponentCard = document.getElementById("opponentCard");
+    dom.opponentScoreLabel = document.getElementById("opponentScoreLabel");
     dom.opponentScoreValue = document.getElementById("opponentScoreValue");
     dom.modeHint = document.getElementById("modeHint");
-    dom.message = document.getElementById("message");
+    dom.statusToast = document.getElementById("statusToast");
     dom.rotateOverlay = document.getElementById("rotateOverlay");
     dom.gameOver = document.getElementById("gameOver");
     dom.finalScore = document.getElementById("finalScore");
@@ -85,20 +103,89 @@
     return state.mode === "online";
   }
 
-  function updateModeUI() {
-    if (dom.modeHint) {
-      dom.modeHint.textContent = isSingleMode() ? "싱글 플레이" : "온라인 대전";
+  function hideToast() {
+    if (state.toastTimerId !== null) {
+      window.clearTimeout(state.toastTimerId);
+      state.toastTimerId = null;
     }
 
-    if (dom.opponentCard) {
-      dom.opponentCard.classList.toggle("hidden", !isOnlineMode());
+    if (!dom.statusToast) return;
+    dom.statusToast.textContent = "";
+    dom.statusToast.classList.add("hidden");
+    dom.statusToast.classList.remove("good", "bad", "show", "sticky");
+  }
+
+  function setMessage(text, type = "", options = {}) {
+    const { duration = 900, sticky = false } = options;
+
+    if (!text) {
+      hideToast();
+      return;
+    }
+
+    if (state.toastTimerId !== null) {
+      window.clearTimeout(state.toastTimerId);
+      state.toastTimerId = null;
+    }
+
+    dom.statusToast.textContent = text;
+    dom.statusToast.classList.remove("hidden", "good", "bad", "sticky");
+    dom.statusToast.classList.add("show");
+    if (type) dom.statusToast.classList.add(type);
+    if (sticky) dom.statusToast.classList.add("sticky");
+
+    if (!sticky) {
+      state.toastTimerId = window.setTimeout(() => {
+        hideToast();
+      }, duration);
+    }
+  }
+
+  function updateScoreboardLabels(players = null) {
+    const roomPlayers = Array.isArray(players) && players.length
+      ? players
+      : Array.isArray(state.currentRoom?.players)
+        ? state.currentRoom.players
+        : [];
+
+    let myLabel = sanitizeName(state.myName, "나");
+    let opponentLabel = "상대";
+    let showOpponent = false;
+
+    if (isOnlineMode()) {
+      const me = roomPlayers.find((player) => player.socketId === state.mySocketId);
+      const opponent = roomPlayers.find((player) => player.socketId !== state.mySocketId);
+
+      myLabel = sanitizeName(me?.name || state.myName, "나");
+      opponentLabel = sanitizeName(opponent?.name, "상대");
+      showOpponent = Boolean(opponent);
+    }
+
+    dom.scoreLabel.textContent = myLabel;
+    dom.opponentScoreLabel.textContent = opponentLabel;
+    dom.opponentCard.classList.toggle("hidden", !showOpponent);
+  }
+
+  function updateModeUI() {
+    if (dom.modeHint) {
+      if (state.mode === "menu") {
+        dom.modeHint.textContent = "공통 9x18 보드";
+      } else {
+        dom.modeHint.textContent = isSingleMode() ? "싱글 9x18 보드" : "온라인 1:1 9x18 보드";
+      }
     }
 
     const restartLabel = isSingleMode() ? "다시하기" : "대기실로 돌아가기";
     const restartBtn = document.getElementById("restartBtn");
-    if (restartBtn) restartBtn.textContent = isSingleMode() ? "다시하기" : "리셋";
+    if (restartBtn) restartBtn.textContent = restartLabel;
     const restartModalBtn = document.getElementById("restartBtnModal");
     if (restartModalBtn) restartModalBtn.textContent = restartLabel;
+
+    if (!isOnlineMode()) {
+      dom.opponentCard.classList.add("hidden");
+    }
+
+    updateScoreboardLabels();
   }
 
   function setMode(mode) {
@@ -126,6 +213,15 @@
     };
   }
 
+  function cloneBoard(board) {
+    return (board || []).map((row) =>
+      row.map((cell) => ({
+        value: Number(cell.value) || 0,
+        removed: Boolean(cell.removed)
+      }))
+    );
+  }
+
   function createPreviewBoard(seed) {
     const rand = createSeededRandom(seed);
     state.board = [];
@@ -144,25 +240,10 @@
     return cloneBoard(state.board);
   }
 
-  function cloneBoard(board) {
-    return (board || []).map((row) =>
-      row.map((cell) => ({
-        value: Number(cell.value) || 0,
-        removed: Boolean(cell.removed)
-      }))
-    );
-  }
-
   function setBoard(board, rows, cols) {
     if (Number.isInteger(rows)) state.ROWS = rows;
     if (Number.isInteger(cols)) state.COLS = cols;
     state.board = cloneBoard(board);
-  }
-
-  function setMessage(text, type = "") {
-    dom.message.textContent = text;
-    dom.message.classList.remove("good", "bad");
-    if (type) dom.message.classList.add(type);
   }
 
   function updateScore() {
@@ -180,6 +261,7 @@
     state.score = typeof me?.score === "number" ? me.score : 0;
     updateScore();
     updateOpponentScore(typeof opponent?.score === "number" ? opponent.score : 0);
+    updateScoreboardLabels(players);
   }
 
   function resetPlayState() {
@@ -196,7 +278,7 @@
     resetPlayState();
     state.isGameActive = true;
     hideGameOver();
-    setMessage("");
+    hideToast();
     clearSelectionVisuals();
   }
 
@@ -217,7 +299,7 @@
   function updateTime() {
     state.timeLeft = computeTimeLeft();
     dom.timeValue.textContent = String(state.timeLeft);
-    const ratio = Math.max(0, Math.min(1, state.timeLeft / state.DURATION));
+    const ratio = clamp(state.timeLeft / state.DURATION, 0, 1);
     dom.timeBarFill.style.width = `${ratio * 100}%`;
     dom.timeValue.classList.toggle("time-warning", state.timeLeft <= 10);
   }
@@ -252,8 +334,6 @@
 
         if (isSingleMode()) {
           finishSingleGame("timeup");
-        } else {
-          setMessage("결과 계산 중...", "good");
         }
       }
     }, 200);
@@ -272,18 +352,106 @@
     `;
   }
 
+  function scheduleBoardLayout() {
+    if (state.boardLayoutRaf !== null) {
+      window.cancelAnimationFrame(state.boardLayoutRaf);
+    }
+
+    state.boardLayoutRaf = window.requestAnimationFrame(() => {
+      state.boardLayoutRaf = null;
+      applyBoardFrameSize();
+      refreshBoardMetrics();
+
+      if (state.isDragging && state.dragStart && state.dragCurrent) {
+        updateSelection(state.dragStart, state.dragCurrent);
+      }
+    });
+  }
+
+  function applyBoardFrameSize() {
+    if (!dom.boardStage || !dom.boardFrame) return;
+
+    const stageRect = dom.boardStage.getBoundingClientRect();
+    if (!stageRect.width || !stageRect.height) return;
+
+    const ratio = state.COLS / state.ROWS;
+    let width = stageRect.width;
+    let height = width / ratio;
+
+    if (height > stageRect.height) {
+      height = stageRect.height;
+      width = height * ratio;
+    }
+
+    const safeWidth = Math.max(10, Math.floor(width));
+    const safeHeight = Math.max(10, Math.floor(height));
+    const framePad = clamp(Math.round(Math.min(safeWidth, safeHeight) * 0.032), 8, 18);
+
+    dom.boardFrame.style.width = `${safeWidth}px`;
+    dom.boardFrame.style.height = `${safeHeight}px`;
+    dom.boardFrame.style.setProperty("--frame-pad", `${framePad}px`);
+  }
+
+  function refreshBoardMetrics() {
+    if (!dom.board || !dom.boardFrame) return;
+
+    const boardRect = dom.board.getBoundingClientRect();
+    if (!boardRect.width || !boardRect.height) return;
+
+    const cellBase = Math.min(boardRect.width / state.COLS, boardRect.height / state.ROWS);
+    const gap = clamp(Math.round(cellBase * 0.1), 3, 8);
+
+    dom.board.style.gap = `${gap}px`;
+
+    const finalRect = dom.board.getBoundingClientRect();
+    const cellWidth = (finalRect.width - gap * (state.COLS - 1)) / state.COLS;
+    const cellHeight = (finalRect.height - gap * (state.ROWS - 1)) / state.ROWS;
+    const cellMin = Math.min(cellWidth, cellHeight);
+
+    state.layout = {
+      boardRect: finalRect,
+      gapX: gap,
+      gapY: gap,
+      cellWidth,
+      cellHeight,
+      cellSpanX: cellWidth + gap,
+      cellSpanY: cellHeight + gap,
+      hitPaddingX: clamp(cellWidth * 0.45, 10, 24),
+      hitPaddingY: clamp(cellHeight * 0.45, 10, 24)
+    };
+
+    dom.boardFrame.style.setProperty("--cell-gap", `${gap}px`);
+    dom.boardFrame.style.setProperty("--cell-min", `${cellMin}px`);
+    dom.boardFrame.style.setProperty("--grid-step", `${Math.round(cellMin * 0.6)}px`);
+  }
+
+  function resetCellHighlight(cell) {
+    if (!cell) return;
+    cell.classList.remove("selected", "good");
+
+    const apple = cell.querySelector(".apple");
+    if (apple) {
+      apple.style.transform = "";
+      apple.style.transition = "";
+    }
+  }
+
   function ensureBoardGrid() {
     const needsRebuild =
       state.cellEls.length !== state.ROWS ||
       !state.cellEls[0] ||
       state.cellEls[0].length !== state.COLS;
 
-    if (!needsRebuild) return;
+    dom.board.style.gridTemplateColumns = `repeat(${state.COLS}, 1fr)`;
+    dom.board.style.gridTemplateRows = `repeat(${state.ROWS}, 1fr)`;
+
+    if (!needsRebuild) {
+      scheduleBoardLayout();
+      return;
+    }
 
     dom.board.innerHTML = "";
     state.cellEls = [];
-    dom.board.style.gridTemplateColumns = `repeat(${state.COLS}, 1fr)`;
-    dom.board.style.gridTemplateRows = `repeat(${state.ROWS}, 1fr)`;
 
     for (let row = 0; row < state.ROWS; row += 1) {
       const rowEls = [];
@@ -298,6 +466,8 @@
       }
       state.cellEls.push(rowEls);
     }
+
+    scheduleBoardLayout();
   }
 
   function syncBoardVisuals() {
@@ -309,13 +479,15 @@
         const cellData = state.board[row][col];
         const appleNum = cell.querySelector(".apple-num");
 
+        resetCellHighlight(cell);
+
         if (appleNum) {
           appleNum.textContent = String(cellData.value);
         }
 
         if (cellData.removed) {
           cell.classList.add("removed");
-          cell.classList.remove("selected", "good", "dropping");
+          cell.classList.remove("dropping");
         } else {
           cell.classList.remove("removed", "dropping");
         }
@@ -332,22 +504,46 @@
 
   function renderBoard() {
     syncBoardVisuals();
+    scheduleBoardLayout();
   }
 
-  function getCellFromClient(clientX, clientY, clamp = false) {
-    const rect = dom.board.getBoundingClientRect();
-    let x = clientX - rect.left;
-    let y = clientY - rect.top;
+  function getCellFromClient(clientX, clientY, options = {}) {
+    const { clampToBoard = false, forgiving = false } = options;
 
-    if (clamp) {
-      x = Math.max(0, Math.min(rect.width - 1, x));
-      y = Math.max(0, Math.min(rect.height - 1, y));
-    } else if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
-      return null;
+    if (!state.layout?.boardRect) {
+      refreshBoardMetrics();
     }
 
-    const row = Math.max(0, Math.min(state.ROWS - 1, Math.floor((y / rect.height) * state.ROWS)));
-    const col = Math.max(0, Math.min(state.COLS - 1, Math.floor((x / rect.width) * state.COLS)));
+    const layout = state.layout;
+    if (!layout?.boardRect) return null;
+
+    const boundsX = forgiving ? layout.hitPaddingX : 0;
+    const boundsY = forgiving ? layout.hitPaddingY : 0;
+
+    let x = clientX - layout.boardRect.left;
+    let y = clientY - layout.boardRect.top;
+
+    if (!clampToBoard) {
+      const outsideX = x < -boundsX || x > layout.boardRect.width + boundsX;
+      const outsideY = y < -boundsY || y > layout.boardRect.height + boundsY;
+      if (outsideX || outsideY) {
+        return null;
+      }
+    }
+
+    x = clamp(x, 0, Math.max(0, layout.boardRect.width - 1));
+    y = clamp(y, 0, Math.max(0, layout.boardRect.height - 1));
+
+    const col = clamp(
+      Math.round((x - (layout.cellWidth / 2)) / layout.cellSpanX),
+      0,
+      state.COLS - 1
+    );
+    const row = clamp(
+      Math.round((y - (layout.cellHeight / 2)) / layout.cellSpanY),
+      0,
+      state.ROWS - 1
+    );
 
     return { row, col };
   }
@@ -355,7 +551,7 @@
   function clearSelectionVisuals() {
     for (let row = 0; row < state.cellEls.length; row += 1) {
       for (let col = 0; col < state.cellEls[row].length; col += 1) {
-        state.cellEls[row][col].classList.remove("selected", "good");
+        resetCellHighlight(state.cellEls[row][col]);
       }
     }
 
@@ -368,8 +564,9 @@
 
     for (const pos of state.selectedPositions) {
       if (!state.board[pos.row][pos.col].removed) {
-        state.cellEls[pos.row][pos.col].classList.add("selected");
-        if (isGood) state.cellEls[pos.row][pos.col].classList.add("good");
+        const cell = state.cellEls[pos.row][pos.col];
+        cell.classList.add("selected");
+        if (isGood) cell.classList.add("good");
       }
     }
   }
@@ -417,20 +614,11 @@
     }
 
     const isGood = count > 0 && sum === 10;
-
     paintSelectedCells(isGood);
     updateSelectionRect(minRow, minCol, maxRow, maxCol, isGood);
-
-    if (count === 0) {
-      setMessage("");
-    } else if (isGood) {
-      setMessage("좋아요! 지금 놓으면 제거됩니다", "good");
-    } else {
-      setMessage("");
-    }
   }
 
-  function cancelDrag(resetMessage = true) {
+  function cancelDrag(clearToast = false) {
     state.isDragging = false;
     state.activePointerId = null;
     state.dragStart = null;
@@ -438,8 +626,8 @@
     state.selectedPositions = [];
     clearSelectionVisuals();
 
-    if (resetMessage && state.isGameActive && !state.isResolving) {
-      setMessage("");
+    if (clearToast) {
+      hideToast();
     }
   }
 
@@ -480,7 +668,7 @@
 
       dropLayer.appendChild(ghost);
 
-      const centerBias = (pos.col - (state.COLS - 1) / 2) / ((state.COLS - 1) / 2 || 1);
+      const centerBias = (pos.col - ((state.COLS - 1) / 2)) / (((state.COLS - 1) / 2) || 1);
       const driftX = (centerBias * 54) + (Math.random() * 18 - 9);
       const liftY = 40 + Math.random() * 16;
       const fallY = boardHeight + 120 + Math.random() * 44;
@@ -531,7 +719,7 @@
     });
   }
 
-  async function handleBoardUpdate({ board, players, removedPositions = [], bySocketId = null, byName = "", endsAt = null } = {}) {
+  async function handleBoardUpdate({ board, players, removedPositions = [], bySocketId = null, endsAt = null } = {}) {
     if (!Array.isArray(board)) return;
 
     const positions = Array.isArray(removedPositions) ? removedPositions : [];
@@ -539,12 +727,17 @@
     const oldRows = state.ROWS;
     const oldCols = state.COLS;
 
-    if (Array.isArray(board)) {
-      setBoard(board, board.length || state.ROWS, board[0]?.length || state.COLS);
-    }
+    setBoard(board, board.length || state.ROWS, board[0]?.length || state.COLS);
 
     if (typeof endsAt === "number") {
       state.endsAt = endsAt;
+    }
+
+    if (Array.isArray(players) && players.length) {
+      state.currentRoom = {
+        ...(state.currentRoom || {}),
+        players
+      };
     }
 
     updateScoresFromPlayers(players || []);
@@ -562,18 +755,14 @@
     }
 
     if (positions.length > 0) {
-      if (bySocketId === state.mySocketId) {
+      if (bySocketId && bySocketId === state.mySocketId) {
         App.audio.playSuccessSound();
-        setMessage(`성공! ${positions.length}개 제거`, "good");
-      } else {
-        App.audio.playSelectSound();
-        setMessage(`${byName || "상대"}가 ${positions.length}개 제거`, "bad");
       }
-
       animateRemoval(positions);
     }
 
     syncBoardVisuals();
+    scheduleBoardLayout();
     state.isResolving = false;
   }
 
@@ -585,10 +774,10 @@
     state.score += positions.length;
     updateScore();
     App.audio.playSuccessSound();
-    setMessage(`성공! ${positions.length}개 제거`, "good");
 
     animateRemoval(positions);
     syncBoardVisuals();
+    scheduleBoardLayout();
 
     state.isResolving = false;
 
@@ -603,19 +792,18 @@
     const socket = getSocket();
 
     if (validPositions.length === 0) {
-      cancelDrag();
+      cancelDrag(false);
       return;
     }
 
     if (sum !== 10) {
       App.audio.playFailSound();
-      setMessage("합이 10이 아니에요", "bad");
       cancelDrag(false);
       return;
     }
 
     if (!state.dragStart || !state.dragCurrent) {
-      cancelDrag();
+      cancelDrag(false);
       return;
     }
 
@@ -628,12 +816,10 @@
     }
 
     if (!socket) {
-      cancelDrag();
+      cancelDrag(false);
       state.isResolving = false;
       return;
     }
-
-    setMessage("확인 중...", "good");
 
     const payload = {
       start: state.dragStart,
@@ -647,7 +833,6 @@
 
       state.isResolving = false;
       App.audio.playFailSound();
-      setMessage(response?.message || "처리에 실패했습니다.", "bad");
     });
   }
 
@@ -671,7 +856,9 @@
 
     const me = room.players.find((player) => player.socketId === state.mySocketId);
     const opponent = room.players.find((player) => player.socketId !== state.mySocketId);
+
     updateOpponentScore(opponent && typeof opponent.score === "number" ? opponent.score : 0);
+    updateScoreboardLabels(room.players);
     dom.readyBtn.textContent = me && me.ready ? "준비 취소" : "준비하기";
   }
 
@@ -685,15 +872,20 @@
     state.mySocketId = null;
     state.myName = "";
     state.myRoomCode = "";
+    state.ROWS = DEFAULT_ROWS;
+    state.COLS = DEFAULT_COLS;
+    state.DURATION = DEFAULT_DURATION;
     state.endsAt = null;
     state.score = 0;
     state.timeLeft = state.DURATION;
+
     updateScore();
     updateOpponentScore(0);
+    updateScoreboardLabels();
     dom.roomOverlay.classList.add("hidden");
     hideGameOver();
     dom.startOverlay.classList.remove("hidden");
-    setMessage("");
+    hideToast();
     clearTimer();
     resetPlayState();
     createPreviewBoard(1);
@@ -703,13 +895,15 @@
 
   function setPlayerIdentity({ socketId = null, name = "", roomCode = "" } = {}) {
     state.mySocketId = socketId;
-    state.myName = name;
+    state.myName = sanitizeName(name, "나");
     state.myRoomCode = roomCode;
+    updateScoreboardLabels();
   }
 
   function enterOnlineLobby() {
     setMode("online");
     hideGameOver();
+    hideToast();
     dom.startOverlay.classList.add("hidden");
   }
 
@@ -719,6 +913,10 @@
     state.COLS = cols || state.COLS;
     state.DURATION = duration || state.DURATION;
     state.endsAt = typeof endsAt === "number" ? endsAt : Date.now() + (state.DURATION * 1000);
+    state.currentRoom = {
+      ...(state.currentRoom || {}),
+      players: Array.isArray(players) ? players : state.currentRoom?.players || []
+    };
 
     prepareGameStart();
     setBoard(board || state.board, state.ROWS, state.COLS);
@@ -747,25 +945,27 @@
     showGameOver();
   }
 
-  function startSingleGame(seed = Math.floor(Math.random() * 1000000000)) {
+  function startSingleGame(displayName = "") {
     setMode("single");
-    state.lastSingleSeed = seed;
+    state.lastSingleSeed = Math.floor(Math.random() * 1000000000);
     state.currentRoom = null;
     state.mySocketId = "single-player";
-    state.myName = "싱글";
+    state.myName = sanitizeName(displayName, "나");
     state.myRoomCode = "";
-    state.ROWS = 14;
-    state.COLS = 14;
-    state.DURATION = 120;
+    state.ROWS = DEFAULT_ROWS;
+    state.COLS = DEFAULT_COLS;
+    state.DURATION = DEFAULT_DURATION;
     state.endsAt = Date.now() + (state.DURATION * 1000);
     state.score = 0;
+
     updateScore();
     updateOpponentScore(0);
+    updateScoreboardLabels();
     dom.startOverlay.classList.add("hidden");
     dom.roomOverlay.classList.add("hidden");
 
     prepareGameStart();
-    setBoard(createPreviewBoard(seed), state.ROWS, state.COLS);
+    setBoard(createPreviewBoard(state.lastSingleSeed), state.ROWS, state.COLS);
     renderBoard();
     updateTime();
     startTimer();
@@ -775,13 +975,14 @@
 
   function restartSingleGame() {
     hideGameOver();
-    startSingleGame(Math.floor(Math.random() * 1000000000));
+    startSingleGame(state.myName || "나");
   }
 
   function handleGameStart(payload) {
     App.audio.ensureAudio();
     App.audio.playStartSound();
     dom.roomOverlay.classList.add("hidden");
+    hideToast();
     startSharedGame(payload);
   }
 
@@ -793,7 +994,7 @@
     state.isResolving = false;
     clearTimer();
     cancelDrag(false);
-    setMessage("");
+    hideToast();
 
     const myScoreEntry = result.scores.find((entry) => entry.socketId === state.mySocketId);
     const winnerEntry = result.scores.find((entry) => entry.socketId === result.winnerSocketId);
@@ -821,19 +1022,21 @@
 
   function handleOpponentLeft(message) {
     if (isSingleMode()) return;
+
     App.audio.ensureAudio();
     App.audio.playOpponentLeftSound();
     clearTimer();
     hideGameOver();
     dom.roomOverlay.classList.remove("hidden");
-    setMessage(message || "상대가 나가서 대기실로 돌아갑니다.", "bad");
+    setMessage(message || "상대가 나가서 대기실로 돌아갑니다.", "bad", { sticky: true });
     state.isGameActive = false;
     state.isResolving = false;
   }
 
   function handleDisconnect() {
     if (isSingleMode()) return;
-    setMessage("서버 연결이 끊겼습니다.", "bad");
+
+    setMessage("서버 연결이 끊겼습니다.", "bad", { sticky: true });
     clearTimer();
     state.isGameActive = false;
     state.isResolving = false;
@@ -849,7 +1052,17 @@
     }
 
     if (!state.currentRoom || !state.currentRoom.gameStarted) return;
-    window.alert("온라인 모드에서는 임의 리셋 대신 게임 종료 후 다시 준비해주세요.");
+    window.alert("온라인 모드는 게임 종료 후 대기실에서 다시 준비해주세요.");
+  }
+
+  function initBoardObserver() {
+    if (!window.ResizeObserver || state.resizeObserver || !dom.boardStage) return;
+
+    state.resizeObserver = new window.ResizeObserver(() => {
+      scheduleBoardLayout();
+    });
+
+    state.resizeObserver.observe(dom.boardStage);
   }
 
   function bindBoardEvents() {
@@ -857,7 +1070,9 @@
       App.audio.ensureAudio();
       if (!state.isGameActive || state.isResolving || state.isDragging || state.timeLeft <= 0) return;
 
-      const pos = getCellFromClient(event.clientX, event.clientY);
+      const pos = getCellFromClient(event.clientX, event.clientY, {
+        forgiving: true
+      });
       if (!pos) return;
 
       event.preventDefault();
@@ -881,7 +1096,10 @@
 
       event.preventDefault();
 
-      const pos = getCellFromClient(event.clientX, event.clientY, true);
+      const pos = getCellFromClient(event.clientX, event.clientY, {
+        clampToBoard: true,
+        forgiving: true
+      });
       if (!pos) return;
       if (state.dragCurrent && state.dragCurrent.row === pos.row && state.dragCurrent.col === pos.col) return;
 
@@ -895,6 +1113,16 @@
 
       event.preventDefault();
 
+      const pos = getCellFromClient(event.clientX, event.clientY, {
+        clampToBoard: true,
+        forgiving: true
+      });
+
+      if (pos) {
+        state.dragCurrent = pos;
+        updateSelection(state.dragStart, state.dragCurrent);
+      }
+
       try {
         dom.board.releasePointerCapture(event.pointerId);
       } catch (error) {}
@@ -903,34 +1131,42 @@
     }, { passive: false });
 
     window.addEventListener("pointercancel", () => {
-      if (state.isDragging) cancelDrag();
+      if (state.isDragging) cancelDrag(false);
     });
 
     window.addEventListener("blur", () => {
-      if (state.isDragging) cancelDrag();
+      if (state.isDragging) cancelDrag(false);
     });
 
     window.addEventListener("resize", () => {
       updateMobileOrientationUI();
-      if (state.isDragging && state.dragStart && state.dragCurrent) {
-        updateSelection(state.dragStart, state.dragCurrent);
-      }
+      scheduleBoardLayout();
     });
 
-    window.addEventListener("orientationchange", updateMobileOrientationUI);
+    window.addEventListener("orientationchange", () => {
+      updateMobileOrientationUI();
+      scheduleBoardLayout();
+    });
   }
 
   function init() {
     cacheDom();
     ensureDropLayer();
     bindBoardEvents();
+    initBoardObserver();
     setMode("menu");
     updateMobileOrientationUI();
+    state.ROWS = DEFAULT_ROWS;
+    state.COLS = DEFAULT_COLS;
+    state.DURATION = DEFAULT_DURATION;
+    state.myName = "나";
     createPreviewBoard(1);
     renderBoard();
     updateScore();
+    updateOpponentScore(0);
+    updateScoreboardLabels();
     updateTime();
-    updateModeUI();
+    hideToast();
   }
 
   App.game = {
