@@ -25,6 +25,8 @@
     const dom = {
       startOverlay: document.getElementById("startOverlay"),
       roomOverlay: document.getElementById("roomOverlay"),
+      desktopStartLayout: document.getElementById("desktopStartLayout"),
+      mobileStartLayout: document.getElementById("mobileStartLayout"),
       singleModeBtn: document.getElementById("singleModeBtn"),
       singleModeBtnMobile: document.getElementById("singleModeBtnMobile"),
       mobileOnlineMenuBtn: document.getElementById("mobileOnlineMenuBtn"),
@@ -64,7 +66,25 @@
       return window.innerWidth <= MOBILE_START_BREAKPOINT;
     }
 
+    function syncStartLayoutMode() {
+      const mobile = isMobileStartLayout();
+
+      if (dom.desktopStartLayout) {
+        dom.desktopStartLayout.hidden = mobile;
+      }
+
+      if (dom.mobileStartLayout) {
+        dom.mobileStartLayout.hidden = !mobile;
+      }
+
+      if (!mobile) {
+        dom.startOverlay.classList.remove("mobile-online-open");
+      }
+    }
+
     function setMobileMenuState(view) {
+      syncStartLayoutMode();
+
       const isOnlineView = isMobileStartLayout() && view === "online";
       dom.startOverlay.classList.toggle("mobile-online-open", isOnlineView);
 
@@ -342,11 +362,13 @@
     socket.on("disconnect", App.game.handleDisconnect);
 
     window.addEventListener("resize", () => {
+      syncStartLayoutMode();
       if (!isMobileStartLayout()) {
         setMobileMenuState("home");
       }
     });
 
+    syncStartLayoutMode();
     setMobileMenuState("home");
     syncSettingsUi();
   }

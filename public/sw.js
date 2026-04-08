@@ -1,4 +1,4 @@
-const CACHE_NAME = "fruit-box-pwa-v1";
+const CACHE_NAME = "fruit-box-pwa-v2";
 
 const APP_SHELL = [
   "/",
@@ -38,9 +38,14 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   if (request.url.includes("/socket.io/")) return;
 
+  const url = new URL(request.url);
   const accept = request.headers.get("accept") || "";
+  const isStaticUiAsset =
+    url.pathname.endsWith(".css") ||
+    url.pathname.endsWith(".js") ||
+    url.pathname.endsWith(".html");
 
-  if (request.mode === "navigate" || accept.includes("text/html")) {
+  if (request.mode === "navigate" || accept.includes("text/html") || isStaticUiAsset) {
     event.respondWith(
       fetch(request)
         .then((response) => {

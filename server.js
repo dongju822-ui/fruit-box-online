@@ -11,8 +11,8 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const ROOM_PLAYER_LIMIT = 2;
 const GAME_DURATION = 120;
-const ROWS = 14;
-const COLS = 14;
+const ROWS = 9;
+const COLS = 18;
 
 app.use(express.static(path.join(__dirname, "public")));
 

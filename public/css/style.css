@@ -488,6 +488,9 @@ input {
 .overlay {
   background: radial-gradient(circle at top, rgba(41, 126, 68, 0.22) 0%, rgba(14, 22, 14, 0.56) 58%, rgba(11, 16, 11, 0.72) 100%);
   backdrop-filter: blur(12px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   z-index: 50;
 }
 
@@ -711,6 +714,11 @@ input {
 .menu-settings-icon {
   font-size: 20px;
   line-height: 1;
+}
+
+.menu-desktop-layout[hidden],
+.menu-mobile-layout[hidden] {
+  display: none !important;
 }
 
 .menu-mobile-layout {
@@ -1092,23 +1100,31 @@ input {
 }
 
 @media (max-width: 900px) {
+  .start-overlay {
+    align-items: flex-start;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-right: calc(12px + env(safe-area-inset-right));
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    padding-left: calc(12px + env(safe-area-inset-left));
+  }
+
   .panel,
   .game-over-card {
-    width: min(92vw, 440px);
-    padding: 18px;
+    width: min(100%, 420px);
+    padding: 16px;
     border-radius: 28px;
   }
 
   .menu-shell {
-    gap: 18px;
+    gap: 14px;
   }
 
   .menu-title {
-    font-size: 52px;
+    font-size: 44px;
   }
 
   .menu-subtitle {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .menu-desktop-layout {
@@ -1121,11 +1137,12 @@ input {
 
   .menu-mobile-home {
     display: grid;
-    gap: 12px;
+    gap: 10px;
   }
 
   .menu-mobile-online {
     display: none;
+    gap: 10px;
   }
 
   .start-overlay.mobile-online-open .menu-mobile-home {
@@ -1235,29 +1252,60 @@ input {
 
 @media (max-width: 720px) {
   .menu-title {
-    font-size: 46px;
+    font-size: 40px;
   }
 
   .menu-mobile-btn {
-    min-height: 96px;
-    padding: 16px 18px;
+    min-height: 82px;
+    padding: 14px 16px;
   }
 
   .menu-mobile-btn-title {
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .menu-mobile-btn-sub {
-    font-size: 16px;
+    font-size: 14px;
   }
 
   .menu-mobile-btn-mark {
     right: 18px;
-    font-size: 28px;
+    font-size: 24px;
   }
 
   .menu-mobile-online-title {
-    font-size: 24px;
+    font-size: 22px;
+  }
+
+  .menu-mobile-online-card {
+    padding: 14px;
+  }
+
+  .join-row {
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 108px;
+  }
+
+  .input,
+  .room-code-input {
+    padding: 12px 14px;
+    font-size: 16px;
+  }
+
+  .big-btn {
+    margin-top: 10px;
+    padding: 13px 14px;
+    font-size: 16px;
+  }
+
+  .sub-btn {
+    padding: 12px 12px;
+    font-size: 15px;
+  }
+
+  .menu-settings-btn {
+    padding: 12px 18px;
+    font-size: 15px;
   }
 }
 
