@@ -3,6 +3,7 @@
   const DEFAULT_ROWS = 9;
   const DEFAULT_COLS = 18;
   const DEFAULT_DURATION = 120;
+  const DRAG_FEEDBACK_THROTTLE_MS = 40;
 
   const state = App.state || (App.state = {
     socket: null,
@@ -28,6 +29,8 @@
     dragStart: null,
     dragCurrent: null,
     selectedPositions: [],
+    dragVisitedKeys: new Set(),
+    lastDragFeedbackAt: 0,
     layout: null,
     boardLayoutRaf: null,
     resizeObserver: null,
@@ -74,6 +77,63 @@
 
   function getSocket() {
     return App.state.socket;
+  }
+
+  function getCellKey(pos) {
+    return `${pos.row}:${pos.col}`;
+  }
+
+  function isIOSDevice() {
+    const userAgent = window.navigator.userAgent || "";
+    const platform = window.navigator.platform || "";
+    return /iPad|iPhone|iPod/i.test(userAgent)
+      || (platform === "MacIntel" && window.navigator.maxTouchPoints > 1);
+  }
+
+  function canUseTouchVibration() {
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const hasTouch = coarsePointer || window.navigator.maxTouchPoints > 0;
+    return hasTouch && typeof window.navigator.vibrate === "function" && !isIOSDevice();
+  }
+
+  function triggerDragEntryFeedback(pos, options = {}) {
+    if (!pos) return;
+
+    const { force = false } = options;
+    const cellData = state.board[pos.row]?.[pos.col];
+    if (!cellData || cellData.removed) return;
+
+    const key = getCellKey(pos);
+    if (!force && state.dragVisitedKeys.has(key)) return;
+    state.dragVisitedKeys.add(key);
+
+    const cell = state.cellEls[pos.row]?.[pos.col];
+    if (!cell) return;
+
+    if (cell._dragEntryTimer) {
+      window.clearTimeout(cell._dragEntryTimer);
+      cell._dragEntryTimer = null;
+    }
+
+    cell.classList.remove("drag-entry");
+    void cell.offsetWidth;
+    cell.classList.add("drag-entry");
+    cell._dragEntryTimer = window.setTimeout(() => {
+      cell.classList.remove("drag-entry");
+      cell._dragEntryTimer = null;
+    }, 150);
+
+    const now = performance.now();
+    if (now - state.lastDragFeedbackAt < DRAG_FEEDBACK_THROTTLE_MS) return;
+
+    state.lastDragFeedbackAt = now;
+    App.audio.playSelectSound();
+
+    if (canUseTouchVibration()) {
+      try {
+        window.navigator.vibrate(12);
+      } catch (error) {}
+    }
   }
 
   function ensureDropLayer() {
@@ -273,6 +333,8 @@
     state.dragStart = null;
     state.dragCurrent = null;
     state.selectedPositions = [];
+    state.dragVisitedKeys = new Set();
+    state.lastDragFeedbackAt = 0;
   }
 
   function prepareGameStart() {
@@ -625,6 +687,8 @@
     state.dragStart = null;
     state.dragCurrent = null;
     state.selectedPositions = [];
+    state.dragVisitedKeys = new Set();
+    state.lastDragFeedbackAt = 0;
     clearSelectionVisuals();
 
     if (clearToast) {
@@ -1084,12 +1148,14 @@
       state.activePointerId = event.pointerId;
       state.dragStart = pos;
       state.dragCurrent = pos;
+      state.dragVisitedKeys = new Set();
+      state.lastDragFeedbackAt = 0;
 
       try {
         dom.board.setPointerCapture(event.pointerId);
       } catch (error) {}
 
-      App.audio.playSelectSound();
+      triggerDragEntryFeedback(pos, { force: true });
       updateSelection(state.dragStart, state.dragCurrent);
     });
 
@@ -1107,6 +1173,7 @@
       if (state.dragCurrent && state.dragCurrent.row === pos.row && state.dragCurrent.col === pos.col) return;
 
       state.dragCurrent = pos;
+      triggerDragEntryFeedback(pos);
       updateSelection(state.dragStart, state.dragCurrent);
     }, { passive: false });
 

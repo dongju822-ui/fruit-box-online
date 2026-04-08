@@ -10,7 +10,7 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const ROOM_PLAYER_LIMIT = 2;
-const GAME_DURATION = 120;
+const GAME_DURATION = 90;
 const ROWS = 9;
 const COLS = 18;
 

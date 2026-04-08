@@ -7,6 +7,7 @@
   const SFX_VOLUME_MULTIPLIER = 2.4;
   const SFX_MAX_VOLUME = 0.14;
   const BGM_SRC = "/assets/bgm/3.mp3";
+  const SELECT_SOUND_THROTTLE_MS = 40;
 
   const state = {
     audioCtx: null,
@@ -144,9 +145,9 @@
 
   function playSelectSound() {
     const now = performance.now();
-    if (now - state.lastSelectAt < 50) return;
+    if (now - state.lastSelectAt < SELECT_SOUND_THROTTLE_MS) return;
     state.lastSelectAt = now;
-    playSfxTone({ frequency: 640, endFrequency: 820, duration: 0.042, volume: 0.02, type: "triangle" });
+    playSfxTone({ frequency: 760, endFrequency: 980, duration: 0.032, volume: 0.016, type: "triangle" });
   }
 
   function playSuccessSound() {
