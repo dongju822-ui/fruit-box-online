@@ -125,6 +125,7 @@
     }
 
     function openSettings() {
+      App.audio.ensureAudio();
       App.audio.playUiSound();
       syncSettingsUi();
       dom.settingsOverlay.classList.remove("hidden");
@@ -254,6 +255,18 @@
       button.addEventListener("click", openSettings);
     });
 
+    [dom.bgmVolumeSlider, dom.dragVolumeSlider, dom.clearVolumeSlider].forEach((slider) => {
+      if (!slider) return;
+
+      const primeAudio = () => {
+        App.audio.ensureAudio();
+      };
+
+      slider.addEventListener("pointerdown", primeAudio, { passive: true });
+      slider.addEventListener("touchstart", primeAudio, { passive: true });
+      slider.addEventListener("focus", primeAudio);
+    });
+
     dom.mobileOnlineMenuBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
       App.audio.playUiSound();
@@ -284,33 +297,50 @@
       }
     });
 
-    dom.bgmVolumeSlider.addEventListener("input", () => {
+    const handleBgmVolumeInput = () => {
       const value = Number(dom.bgmVolumeSlider.value) / 100;
       App.audio.ensureAudio();
       App.audio.setBgmVolume(value);
       dom.bgmVolumeValue.textContent = `${dom.bgmVolumeSlider.value}%`;
-    });
+    };
 
-    dom.dragVolumeSlider.addEventListener("input", () => {
+    dom.bgmVolumeSlider.addEventListener("input", handleBgmVolumeInput);
+    dom.bgmVolumeSlider.addEventListener("change", handleBgmVolumeInput);
+
+    const handleDragVolumeInput = () => {
       const value = Number(dom.dragVolumeSlider.value) / 100;
       App.audio.ensureAudio();
       App.audio.setDragVolume(value);
       dom.dragVolumeValue.textContent = `${dom.dragVolumeSlider.value}%`;
+    };
+
+    dom.dragVolumeSlider.addEventListener("input", handleDragVolumeInput);
+    dom.dragVolumeSlider.addEventListener("change", handleDragVolumeInput);
+
+    dom.dragVolumeSlider.addEventListener("input", () => {
+      App.audio.playSelectSound();
     });
 
     dom.dragVolumeSlider.addEventListener("change", () => {
       App.audio.playSelectSound({ bypassThrottle: true });
     });
 
-    dom.clearVolumeSlider.addEventListener("input", () => {
+    const handleClearVolumeInput = () => {
       const value = Number(dom.clearVolumeSlider.value) / 100;
       App.audio.ensureAudio();
       App.audio.setClearVolume(value);
       dom.clearVolumeValue.textContent = `${dom.clearVolumeSlider.value}%`;
+    };
+
+    dom.clearVolumeSlider.addEventListener("input", handleClearVolumeInput);
+    dom.clearVolumeSlider.addEventListener("change", handleClearVolumeInput);
+
+    dom.clearVolumeSlider.addEventListener("input", () => {
+      App.audio.playClearPreviewSound();
     });
 
     dom.clearVolumeSlider.addEventListener("change", () => {
-      App.audio.playSuccessSound();
+      App.audio.playClearPreviewSound({ bypassThrottle: true });
     });
 
     dom.readyBtn.addEventListener("click", () => {

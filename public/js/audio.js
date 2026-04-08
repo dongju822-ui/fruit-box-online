@@ -11,12 +11,15 @@
   const SFX_MAX_VOLUME = 0.2;
   const BGM_SRC = "/assets/bgm/3.mp3";
   const SELECT_SOUND_THROTTLE_MS = 40;
+  const CLEAR_PREVIEW_THROTTLE_MS = 90;
 
   const state = {
     audioCtx: null,
     audioUnlocked: false,
     bgmAudio: null,
+    unlockHandlersBound: false,
     lastSelectAt: 0,
+    lastClearPreviewAt: 0,
     settings: loadSettings()
   };
 
@@ -58,6 +61,8 @@
   }
 
   function ensureAudio() {
+    bindUnlockHandlers();
+
     if (!state.audioCtx) {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (AudioContextClass) state.audioCtx = new AudioContextClass();
@@ -72,6 +77,26 @@
     return state.audioCtx;
   }
 
+  function isPageVisible() {
+    return document.visibilityState !== "hidden";
+  }
+
+  function syncBgmAudio({ attemptPlay = false } = {}) {
+    const bgm = createBgmAudio();
+    bgm.volume = state.settings.bgmVolume;
+
+    if (!attemptPlay || !state.audioUnlocked || !isPageVisible()) {
+      return bgm;
+    }
+
+    const playPromise = bgm.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {});
+    }
+
+    return bgm;
+  }
+
   function createBgmAudio() {
     if (state.bgmAudio) return state.bgmAudio;
     const audio = new Audio(BGM_SRC);
@@ -79,18 +104,16 @@
     audio.preload = "auto";
     audio.volume = state.settings.bgmVolume;
     audio.crossOrigin = "anonymous";
+    audio.playsInline = true;
+    audio.setAttribute("playsinline", "");
+    audio.setAttribute("webkit-playsinline", "");
     state.bgmAudio = audio;
     return audio;
   }
 
   function startBgm() {
     if (!state.audioUnlocked) return;
-    const bgm = createBgmAudio();
-    bgm.volume = state.settings.bgmVolume;
-    if (bgm.paused) {
-      const p = bgm.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
-    }
+    syncBgmAudio({ attemptPlay: true });
   }
 
   function pauseBgm() {
@@ -101,8 +124,8 @@
     if (!(key in DEFAULT_SETTINGS)) return;
     state.settings[key] = clamp01(value, DEFAULT_SETTINGS[key]);
 
-    if (key === "bgmVolume" && state.bgmAudio) {
-      state.bgmAudio.volume = state.settings.bgmVolume;
+    if (key === "bgmVolume") {
+      syncBgmAudio({ attemptPlay: true });
     }
 
     saveSettings();
@@ -208,6 +231,20 @@
     }, 96);
   }
 
+  function playClearPreviewSound(options = {}) {
+    const { bypassThrottle = false } = options;
+    const now = performance.now();
+    if (!bypassThrottle && now - state.lastClearPreviewAt < CLEAR_PREVIEW_THROTTLE_MS) return;
+    if (!bypassThrottle) {
+      state.lastClearPreviewAt = now;
+    }
+
+    playSfxTone(
+      { frequency: 860, endFrequency: 1220, duration: 0.06, volume: 0.05, type: "triangle" },
+      { volumeKey: "clearVolume" }
+    );
+  }
+
   function playFailSound() {
     playSfxTone({ frequency: 250, endFrequency: 165, duration: 0.15, volume: 0.03, type: "sawtooth" });
   }
@@ -242,14 +279,39 @@
     playSfxTone({ frequency: 360, endFrequency: 220, duration: 0.20, volume: 0.028, type: "square" });
   }
 
+  function bindUnlockHandlers() {
+    if (state.unlockHandlersBound) return;
+    state.unlockHandlersBound = true;
+
+    const unlock = () => {
+      if (!state.audioUnlocked || state.audioCtx?.state === "suspended" || state.bgmAudio?.paused) {
+        ensureAudio();
+      }
+    };
+
+    ["pointerdown", "touchstart", "keydown"].forEach((eventName) => {
+      document.addEventListener(eventName, unlock, { passive: true });
+    });
+  }
+
+  bindUnlockHandlers();
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
       if (state.audioUnlocked && state.audioCtx && state.audioCtx.state === "suspended") {
         state.audioCtx.resume().catch(() => {});
       }
-      if (state.audioUnlocked) startBgm();
+      if (state.audioUnlocked) {
+        syncBgmAudio({ attemptPlay: true });
+      }
     } else {
       pauseBgm();
+    }
+  });
+
+  window.addEventListener("pageshow", () => {
+    if (state.audioUnlocked) {
+      syncBgmAudio({ attemptPlay: true });
     }
   });
 
@@ -265,6 +327,7 @@
     getSettings,
     playUiSound,
     playSelectSound,
+    playClearPreviewSound,
     playSuccessSound,
     playFailSound,
     playStartSound,
