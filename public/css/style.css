@@ -1,4 +1,8 @@
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --page-bg-top: #f7f8ef;
   --page-bg-bottom: #d7e7d3;
   --panel-bg: rgba(255, 255, 255, 0.96);
@@ -53,6 +57,7 @@ body {
 }
 
 body {
+  min-height: 100dvh;
   background:
     radial-gradient(circle at top, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 34%),
     linear-gradient(180deg, var(--page-bg-top) 0%, var(--page-bg-bottom) 100%);
@@ -83,7 +88,10 @@ input {
   height: 100dvh;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: clamp(10px, 1.8vw, 20px);
+  padding-top: calc(clamp(10px, 1.8vw, 20px) + var(--safe-top));
+  padding-right: calc(clamp(10px, 1.8vw, 20px) + var(--safe-right));
+  padding-bottom: calc(clamp(10px, 1.8vw, 20px) + var(--safe-bottom));
+  padding-left: calc(clamp(10px, 1.8vw, 20px) + var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: clamp(8px, 1.1vw, 14px);
@@ -1236,7 +1244,10 @@ input {
 
 @media (max-width: 900px) and (orientation: landscape) {
   .app {
-    padding: 8px;
+    padding-top: calc(8px + var(--safe-top));
+    padding-right: calc(8px + var(--safe-right));
+    padding-bottom: calc(8px + var(--safe-bottom));
+    padding-left: calc(8px + var(--safe-left));
     gap: 6px;
   }
 
@@ -1420,7 +1431,10 @@ input {
 
 @media (max-height: 500px) and (orientation: landscape) {
   .app {
-    padding: 6px;
+    padding-top: calc(6px + var(--safe-top));
+    padding-right: calc(6px + var(--safe-right));
+    padding-bottom: calc(6px + var(--safe-bottom));
+    padding-left: calc(6px + var(--safe-left));
     gap: 4px;
   }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "fruit-box-pwa-v2";
+const CACHE_NAME = "fruit-box-pwa-v3";
 
 const APP_SHELL = [
   "/",
