@@ -5,13 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Fruit Box</title>
   <link rel="stylesheet" href="/css/style.css" />
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#28bc5f" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="사과게임" />
-  <link rel="apple-touch-icon" href="/assets/icons/icon-192.png" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -32,48 +25,98 @@
             </h1>
             <span class="menu-title-fruit" aria-hidden="true">🍎</span>
           </div>
-
-          <p class="menu-subtitle">혼자 연습하거나 친구와 온라인 대전을 바로 시작하세요.</p>
+          <p class="menu-subtitle">혼자 플레이하거나 친구와 같은 방에서 온라인 대전을 시작하세요.</p>
         </div>
 
-        <div class="menu-mode-grid">
-          <button id="singleModeBtn" class="menu-mode-tile menu-mode-tile-single" type="button">
-            <span class="menu-mode-top">SINGLE PLAY</span>
-            <strong class="menu-mode-name">혼자 플레이</strong>
-            <span class="menu-mode-note">즉시 시작</span>
-            <span class="menu-mode-arrow" aria-hidden="true">▶</span>
-          </button>
+        <div class="menu-desktop-layout">
+          <div class="menu-mode-grid">
+            <button id="singleModeBtn" class="menu-mode-tile menu-mode-tile-single" type="button">
+              <span class="menu-mode-top">SINGLE PLAY</span>
+              <strong class="menu-mode-name">혼자 플레이</strong>
+              <span class="menu-mode-note">즉시 시작</span>
+              <span class="menu-mode-arrow" aria-hidden="true">▶</span>
+            </button>
 
-          <section class="menu-mode-tile menu-mode-tile-online">
-            <div class="menu-online-head">
-              <div class="menu-card-icon">⚔️</div>
-              <div>
+            <section class="menu-mode-tile menu-mode-tile-online">
+              <div class="menu-online-head">
+                <div class="menu-card-icon">⚔️</div>
+                <div>
+                  <div class="menu-mode-top">ONLINE MATCH</div>
+                  <div class="menu-online-title">친구와 온라인 대전</div>
+                </div>
+              </div>
+
+              <div class="input-group">
+                <label class="input-label" for="nameInput">닉네임</label>
+                <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
+              </div>
+
+              <button id="createRoomBtn" class="big-btn primary-cta" type="button">방 만들기</button>
+
+              <div class="join-row">
+                <input id="roomCodeInput" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
+                <button id="joinRoomBtn" class="sub-btn join-btn" type="button">방 참가</button>
+              </div>
+
+              <p id="lobbyError" class="small-note error-note"></p>
+            </section>
+          </div>
+
+          <div class="menu-footer">
+            <button id="openSettingsBtn" class="menu-settings-btn" type="button" aria-label="설정">
+              <span class="menu-settings-icon" aria-hidden="true">⚙</span>
+              <span>설정</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="menu-mobile-layout">
+          <div id="mobileMenuHome" class="menu-mobile-home">
+            <button id="singleModeBtnMobile" class="menu-mobile-btn menu-mobile-btn-single" type="button">
+              <span class="menu-mobile-btn-top">SINGLE PLAY</span>
+              <strong class="menu-mobile-btn-title">싱글 플레이</strong>
+              <span class="menu-mobile-btn-sub">즉시 시작</span>
+              <span class="menu-mobile-btn-mark" aria-hidden="true">▶</span>
+            </button>
+
+            <button id="mobileOnlineMenuBtn" class="menu-mobile-btn menu-mobile-btn-online" type="button">
+              <span class="menu-mobile-btn-top">ONLINE MATCH</span>
+              <strong class="menu-mobile-btn-title">온라인 대전</strong>
+              <span class="menu-mobile-btn-sub">방 만들기 / 방 참가</span>
+            </button>
+
+            <button id="openSettingsBtnMobile" class="menu-mobile-btn menu-mobile-btn-settings" type="button">
+              <span class="menu-mobile-btn-top">SOUND SETTINGS</span>
+              <strong class="menu-mobile-btn-title">설정</strong>
+              <span class="menu-mobile-btn-sub">배경음 · 효과음</span>
+            </button>
+          </div>
+
+          <div id="mobileOnlinePanel" class="menu-mobile-online">
+            <div class="menu-mobile-online-head">
+              <button id="mobileOnlineBackBtn" class="menu-mobile-back-btn" type="button" aria-label="뒤로가기">←</button>
+              <div class="menu-mobile-online-copy">
                 <div class="menu-mode-top">ONLINE MATCH</div>
-                <div class="menu-online-title">친구와 온라인 대전</div>
+                <div class="menu-mobile-online-title">친구와 온라인 대전</div>
               </div>
             </div>
 
-            <div class="input-group">
-              <label class="input-label" for="nameInput">닉네임</label>
-              <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
-            </div>
+            <section class="menu-mobile-online-card">
+              <div class="input-group">
+                <label class="input-label" for="nameInputMobile">닉네임</label>
+                <input id="nameInputMobile" class="input" maxlength="12" placeholder="닉네임 입력" />
+              </div>
 
-            <button id="createRoomBtn" class="big-btn primary-cta" type="button">방 만들기</button>
+              <button id="createRoomBtnMobile" class="big-btn primary-cta" type="button">방 만들기</button>
 
-            <div class="join-row">
-              <input id="roomCodeInput" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
-              <button id="joinRoomBtn" class="sub-btn join-btn" type="button">방 참가</button>
-            </div>
+              <div class="join-row">
+                <input id="roomCodeInputMobile" class="room-code-input" maxlength="5" placeholder="방 코드 입력" />
+                <button id="joinRoomBtnMobile" class="sub-btn join-btn" type="button">방 참가</button>
+              </div>
 
-            <p id="lobbyError" class="small-note error-note"></p>
-          </section>
-        </div>
-
-        <div class="menu-footer">
-          <button id="openSettingsBtn" class="menu-settings-btn" type="button" aria-label="설정">
-            <span class="menu-settings-icon" aria-hidden="true">⚙</span>
-            <span>설정</span>
-          </button>
+              <p id="lobbyErrorMobile" class="small-note error-note"></p>
+            </section>
+          </div>
         </div>
       </div>
     </div>
@@ -205,14 +248,5 @@
   <script src="/js/audio.js"></script>
   <script src="/js/game.js"></script>
   <script src="/js/lobby.js"></script>
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(console.error);
-      });
-    }
-  </script>
-
 </body>
 </html>

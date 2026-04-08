@@ -68,6 +68,7 @@
     dom.roomPlayerList = document.getElementById("roomPlayerList");
     dom.readyBtn = document.getElementById("readyBtn");
     dom.lobbyError = document.getElementById("lobbyError");
+    dom.lobbyErrorMobile = document.getElementById("lobbyErrorMobile");
     dom.dropLayer = null;
   }
 
@@ -863,7 +864,9 @@
   }
 
   function showLobbyError(text) {
-    dom.lobbyError.textContent = text || "";
+    const safeText = text || "";
+    if (dom.lobbyError) dom.lobbyError.textContent = safeText;
+    if (dom.lobbyErrorMobile) dom.lobbyErrorMobile.textContent = safeText;
   }
 
   function resetToStartOverlay() {

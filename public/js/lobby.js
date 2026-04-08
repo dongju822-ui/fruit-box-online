@@ -3,6 +3,7 @@
   const socket = io();
   const state = App.state || (App.state = {});
   const NICKNAME_STORAGE_KEY = "fruitbox-player-name";
+  const MOBILE_START_BREAKPOINT = 900;
 
   state.socket = socket;
 
@@ -22,11 +23,20 @@
 
   function initLobby() {
     const dom = {
+      startOverlay: document.getElementById("startOverlay"),
+      roomOverlay: document.getElementById("roomOverlay"),
       singleModeBtn: document.getElementById("singleModeBtn"),
+      singleModeBtnMobile: document.getElementById("singleModeBtnMobile"),
+      mobileOnlineMenuBtn: document.getElementById("mobileOnlineMenuBtn"),
+      mobileOnlineBackBtn: document.getElementById("mobileOnlineBackBtn"),
       nameInput: document.getElementById("nameInput"),
+      nameInputMobile: document.getElementById("nameInputMobile"),
       roomCodeInput: document.getElementById("roomCodeInput"),
+      roomCodeInputMobile: document.getElementById("roomCodeInputMobile"),
       createRoomBtn: document.getElementById("createRoomBtn"),
+      createRoomBtnMobile: document.getElementById("createRoomBtnMobile"),
       joinRoomBtn: document.getElementById("joinRoomBtn"),
+      joinRoomBtnMobile: document.getElementById("joinRoomBtnMobile"),
       readyBtn: document.getElementById("readyBtn"),
       leaveToLobbyBtn: document.getElementById("leaveToLobbyBtn"),
       homeBtn: document.getElementById("homeBtn"),
@@ -34,19 +44,33 @@
       restartBtnTop: document.getElementById("restartBtnTop"),
       restartBtnModal: document.getElementById("restartBtnModal"),
       openSettingsBtn: document.getElementById("openSettingsBtn"),
+      openSettingsBtnMobile: document.getElementById("openSettingsBtnMobile"),
       closeSettingsBtn: document.getElementById("closeSettingsBtn"),
       settingsOverlay: document.getElementById("settingsOverlay"),
       bgmVolumeSlider: document.getElementById("bgmVolumeSlider"),
       clearVolumeSlider: document.getElementById("clearVolumeSlider"),
       bgmVolumeValue: document.getElementById("bgmVolumeValue"),
-      clearVolumeValue: document.getElementById("clearVolumeValue"),
-      startOverlay: document.getElementById("startOverlay"),
-      roomOverlay: document.getElementById("roomOverlay")
+      clearVolumeValue: document.getElementById("clearVolumeValue")
     };
 
-    const savedName = loadSavedNickname();
-    if (savedName) {
-      dom.nameInput.value = savedName;
+    const nameInputs = [dom.nameInput, dom.nameInputMobile].filter(Boolean);
+    const roomCodeInputs = [dom.roomCodeInput, dom.roomCodeInputMobile].filter(Boolean);
+    const singleButtons = [dom.singleModeBtn, dom.singleModeBtnMobile].filter(Boolean);
+    const createButtons = [dom.createRoomBtn, dom.createRoomBtnMobile].filter(Boolean);
+    const joinButtons = [dom.joinRoomBtn, dom.joinRoomBtnMobile].filter(Boolean);
+    const openSettingsButtons = [dom.openSettingsBtn, dom.openSettingsBtnMobile].filter(Boolean);
+
+    function isMobileStartLayout() {
+      return window.innerWidth <= MOBILE_START_BREAKPOINT;
+    }
+
+    function setMobileMenuState(view) {
+      const isOnlineView = isMobileStartLayout() && view === "online";
+      dom.startOverlay.classList.toggle("mobile-online-open", isOnlineView);
+
+      if (!isOnlineView) {
+        App.game.showLobbyError("");
+      }
     }
 
     function syncSettingsUi() {
@@ -60,6 +84,21 @@
       dom.clearVolumeValue.textContent = `${clearPercent}%`;
     }
 
+    function syncTextInputs(targets, value, source = null) {
+      targets.forEach((input) => {
+        if (!input || input === source) return;
+        input.value = value;
+      });
+    }
+
+    function getPlayerName() {
+      return String(nameInputs[0]?.value || "").trim().slice(0, 12);
+    }
+
+    function getRoomCode() {
+      return String(roomCodeInputs[0]?.value || "").trim().toUpperCase().slice(0, 5);
+    }
+
     function openSettings() {
       App.audio.playUiSound();
       syncSettingsUi();
@@ -70,10 +109,9 @@
       dom.settingsOverlay.classList.add("hidden");
     }
 
-    function getPlayerName() {
-      const name = dom.nameInput.value.trim().slice(0, 12);
-      saveNickname(name);
-      return name;
+    function returnToStartOverlay() {
+      App.game.resetToStartOverlay();
+      setMobileMenuState("home");
     }
 
     function triggerCreateRoom() {
@@ -81,6 +119,8 @@
       App.audio.playUiSound();
 
       const name = getPlayerName();
+      saveNickname(name);
+
       socket.emit("room:create", { name }, (response) => {
         if (!response?.ok) {
           App.game.showLobbyError(response?.message);
@@ -98,6 +138,7 @@
         dom.startOverlay.classList.add("hidden");
         dom.roomOverlay.classList.remove("hidden");
         App.game.showLobbyError("");
+        setMobileMenuState("home");
       });
     }
 
@@ -106,7 +147,8 @@
       App.audio.playUiSound();
 
       const name = getPlayerName();
-      const code = dom.roomCodeInput.value.trim().toUpperCase();
+      const code = getRoomCode();
+      saveNickname(name);
 
       socket.emit("room:join", { code, name }, (response) => {
         if (!response?.ok) {
@@ -125,86 +167,81 @@
         dom.startOverlay.classList.add("hidden");
         dom.roomOverlay.classList.remove("hidden");
         App.game.showLobbyError("");
+        setMobileMenuState("home");
       });
     }
 
-    dom.singleModeBtn.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
-      App.game.startSingleGame(getPlayerName());
-    });
+    const savedName = loadSavedNickname();
+    if (savedName) {
+      syncTextInputs(nameInputs, savedName);
+      if (nameInputs[0]) nameInputs[0].value = savedName;
+    }
 
-    dom.createRoomBtn.addEventListener("click", triggerCreateRoom);
-    dom.joinRoomBtn.addEventListener("click", triggerJoinRoom);
+    nameInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = input.value.trim().slice(0, 12);
+        input.value = value;
+        syncTextInputs(nameInputs, value, input);
+        saveNickname(value);
+      });
 
-    dom.nameInput.addEventListener("input", () => {
-      saveNickname(dom.nameInput.value);
-    });
-
-    dom.nameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        triggerCreateRoom();
-      }
-    });
-
-    dom.roomCodeInput.addEventListener("input", () => {
-      dom.roomCodeInput.value = dom.roomCodeInput.value.toUpperCase();
-    });
-
-    dom.roomCodeInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        triggerJoinRoom();
-      }
-    });
-
-    dom.readyBtn.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
-      socket.emit("room:toggleReady", {}, () => {});
-    });
-
-    dom.leaveToLobbyBtn.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
-      socket.emit("room:leave", {}, () => {
-        App.game.resetToStartOverlay();
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          triggerCreateRoom();
+        }
       });
     });
 
-    dom.homeBtn.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
+    roomCodeInputs.forEach((input) => {
+      input.addEventListener("input", () => {
+        const value = input.value.toUpperCase().slice(0, 5);
+        input.value = value;
+        syncTextInputs(roomCodeInputs, value, input);
+      });
 
-      if (App.game.isSingleMode()) {
-        App.game.resetToStartOverlay();
-        return;
-      }
-
-      socket.emit("room:leave", {}, () => {
-        App.game.resetToStartOverlay();
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          triggerJoinRoom();
+        }
       });
     });
 
-    dom.restartBtn.addEventListener("click", App.game.handleRestartIntent);
-    dom.restartBtnTop.addEventListener("click", App.game.handleRestartIntent);
-
-    dom.restartBtnModal.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
-
-      if (App.game.isSingleMode()) {
-        App.game.restartSingleGame();
-        return;
-      }
-
-      App.game.hideGameOver();
-      dom.roomOverlay.classList.remove("hidden");
-      socket.emit("room:resetLobby", {}, () => {});
+    singleButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        App.audio.ensureAudio();
+        App.audio.playUiSound();
+        App.game.startSingleGame(getPlayerName());
+        setMobileMenuState("home");
+      });
     });
 
-    dom.openSettingsBtn.addEventListener("click", openSettings);
+    createButtons.forEach((button) => {
+      button.addEventListener("click", triggerCreateRoom);
+    });
+
+    joinButtons.forEach((button) => {
+      button.addEventListener("click", triggerJoinRoom);
+    });
+
+    openSettingsButtons.forEach((button) => {
+      button.addEventListener("click", openSettings);
+    });
+
+    dom.mobileOnlineMenuBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      App.game.showLobbyError("");
+      setMobileMenuState("online");
+    });
+
+    dom.mobileOnlineBackBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      setMobileMenuState("home");
+    });
+
     dom.closeSettingsBtn.addEventListener("click", () => {
       App.audio.playUiSound();
       closeSettings();
@@ -240,6 +277,51 @@
       App.audio.playSuccessSound();
     });
 
+    dom.readyBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      socket.emit("room:toggleReady", {}, () => {});
+    });
+
+    dom.leaveToLobbyBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      socket.emit("room:leave", {}, () => {
+        returnToStartOverlay();
+      });
+    });
+
+    dom.homeBtn.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+
+      if (App.game.isSingleMode()) {
+        returnToStartOverlay();
+        return;
+      }
+
+      socket.emit("room:leave", {}, () => {
+        returnToStartOverlay();
+      });
+    });
+
+    dom.restartBtn.addEventListener("click", App.game.handleRestartIntent);
+    dom.restartBtnTop.addEventListener("click", App.game.handleRestartIntent);
+
+    dom.restartBtnModal.addEventListener("click", () => {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+
+      if (App.game.isSingleMode()) {
+        App.game.restartSingleGame();
+        return;
+      }
+
+      App.game.hideGameOver();
+      dom.roomOverlay.classList.remove("hidden");
+      socket.emit("room:resetLobby", {}, () => {});
+    });
+
     socket.on("room:update", (room) => {
       const currentState = App.game.getState();
       if (!currentState.mySocketId) return;
@@ -259,6 +341,13 @@
     });
     socket.on("disconnect", App.game.handleDisconnect);
 
+    window.addEventListener("resize", () => {
+      if (!isMobileStartLayout()) {
+        setMobileMenuState("home");
+      }
+    });
+
+    setMobileMenuState("home");
     syncSettingsUi();
   }
 
