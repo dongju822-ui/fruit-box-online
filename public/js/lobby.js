@@ -160,6 +160,8 @@
 
     function setMenuView(nextView) {
       menuView = nextView;
+      dom.startOverlay.dataset.menuView = nextView;
+      document.body.dataset.menuView = nextView;
 
       const onHome = nextView === "home";
       const onOnline = nextView === "online";
@@ -173,6 +175,7 @@
 
       dom.modeSelectView.dataset.section = nextView;
       dom.dailyModeCard.classList.toggle("featured-daily-card", onDaily);
+      App.game.refreshViewportUi?.();
 
       if (onHome) {
         showLobbyError("");

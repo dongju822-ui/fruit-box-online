@@ -62,6 +62,11 @@
     viewportSettleTimerId: null,
     toastTimerId: null,
     dropLayer: null,
+    removalEffects: new Set(),
+    boardFrameSize: {
+      width: 0,
+      height: 0
+    },
     singleConfig: {
       modeId: "classic",
       label: SINGLE_MODE_PRESETS.classic.label,
@@ -315,6 +320,10 @@
     return Boolean(coarsePointer || window.navigator.maxTouchPoints > 0);
   }
 
+  function isLandscapeViewport() {
+    return window.matchMedia?.("(orientation: landscape)")?.matches ?? (window.innerWidth >= window.innerHeight);
+  }
+
   function shouldUseLiteEffects() {
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     return Boolean(
@@ -335,6 +344,11 @@
 
   function syncBodyUiState() {
     document.body.classList.toggle("lite-effects", shouldUseLiteEffects());
+    document.body.classList.toggle("mode-menu", state.mode === "menu");
+    document.body.classList.toggle("mode-single", state.mode === "single");
+    document.body.classList.toggle("mode-online", state.mode === "online");
+    document.body.classList.toggle("game-active", state.isGameActive);
+    document.body.classList.toggle("touch-landscape", isTouchViewport() && isLandscapeViewport());
   }
 
   function isSingleMode() {
@@ -506,6 +520,7 @@
 
   function setMode(mode) {
     state.mode = mode;
+    syncBodyUiState();
     updateModeUI();
   }
 
@@ -611,6 +626,32 @@
     return layer;
   }
 
+  function clearRemovalEffects() {
+    if (state.removalEffects.size) {
+      state.removalEffects.forEach((effect) => {
+        if (effect?.cleanupTimerId !== null) {
+          window.clearTimeout(effect.cleanupTimerId);
+        }
+
+        if (effect?.animation) {
+          try {
+            effect.animation.cancel();
+          } catch (error) {}
+        }
+
+        effect?.ghost?.remove();
+      });
+
+      state.removalEffects.clear();
+    }
+
+    if (state.dropLayer?.replaceChildren) {
+      state.dropLayer.replaceChildren();
+    } else if (state.dropLayer) {
+      state.dropLayer.innerHTML = "";
+    }
+  }
+
   function scheduleBoardLayout() {
     if (state.boardLayoutRaf !== null) {
       window.cancelAnimationFrame(state.boardLayoutRaf);
@@ -648,11 +689,20 @@
 
     const safeWidth = Math.max(10, Math.floor(width));
     const safeHeight = Math.max(10, Math.floor(height));
-    const framePad = clamp(Math.round(Math.min(safeWidth, safeHeight) * 0.032), 8, 18);
+    const framePad = clamp(Math.round(Math.min(safeWidth, safeHeight) * 0.022), 6, 14);
+    const hasFrameResize =
+      Math.abs(state.boardFrameSize.width - safeWidth) > 1
+      || Math.abs(state.boardFrameSize.height - safeHeight) > 1;
+
+    if (hasFrameResize && state.removalEffects.size) {
+      clearRemovalEffects();
+    }
 
     dom.boardFrame.style.width = `${safeWidth}px`;
     dom.boardFrame.style.height = `${safeHeight}px`;
     dom.boardFrame.style.setProperty("--frame-pad", `${framePad}px`);
+    state.boardFrameSize.width = safeWidth;
+    state.boardFrameSize.height = safeHeight;
   }
 
   function refreshBoardMetrics() {
@@ -663,7 +713,7 @@
     if (!boardRect.width || !boardRect.height) return;
 
     const cellBase = Math.min(boardRect.width / state.COLS, boardRect.height / state.ROWS);
-    const gap = clamp(Math.round(cellBase * 0.1), 3, 8);
+    const gap = clamp(Math.round(cellBase * 0.065), 2, 6);
 
     dom.board.style.gap = `${gap}px`;
 
@@ -716,6 +766,7 @@
       return;
     }
 
+    clearRemovalEffects();
     dom.board.innerHTML = "";
     state.cellEls = [];
     state.highlightedCells = [];
@@ -1043,12 +1094,22 @@
   }
 
   function animateRemoval(positions) {
+    if (!Array.isArray(positions) || positions.length === 0) return;
+
     const dropLayer = ensureDropLayer();
+    if (!dropLayer || !dom.boardFrame) return;
+
     const frameRect = dom.boardFrame.getBoundingClientRect();
+    if (!frameRect.width || !frameRect.height) return;
+
     const boardHeight = dom.boardFrame.clientHeight || dom.board.clientHeight || 600;
     const liteEffects = shouldUseLiteEffects();
-    const maxGhosts = liteEffects ? Math.min(12, positions.length) : positions.length;
+    const maxGhosts = Math.min(positions.length, liteEffects ? 10 : 24);
     const sampleStep = Math.max(1, Math.ceil(positions.length / Math.max(1, maxGhosts)));
+
+    if (state.removalEffects.size > 32) {
+      clearRemovalEffects();
+    }
 
     positions.forEach((pos, index) => {
       if (liteEffects && index % sampleStep !== 0) return;
@@ -1071,10 +1132,17 @@
         margin: "0",
         pointerEvents: "none",
         transformOrigin: "50% 50%",
-        zIndex: "1"
+        transition: "none",
+        willChange: "transform, opacity",
+        zIndex: "0"
       });
 
       dropLayer.appendChild(ghost);
+
+      if (typeof ghost.animate !== "function") {
+        ghost.remove();
+        return;
+      }
 
       const centerBias = (pos.col - ((state.COLS - 1) / 2)) / (((state.COLS - 1) / 2) || 1);
       const driftX = liteEffects
@@ -1128,11 +1196,38 @@
         fill: "forwards"
       });
 
+      const effect = {
+        ghost,
+        animation,
+        cleanupTimerId: null
+      };
+
+      const cleanupEffect = () => {
+        if (!state.removalEffects.has(effect)) return;
+
+        state.removalEffects.delete(effect);
+
+        if (effect.cleanupTimerId !== null) {
+          window.clearTimeout(effect.cleanupTimerId);
+          effect.cleanupTimerId = null;
+        }
+
+        if (effect.animation) {
+          try {
+            effect.animation.cancel();
+          } catch (error) {}
+          effect.animation = null;
+        }
+
+        effect.ghost?.remove();
+      };
+
+      effect.cleanupTimerId = window.setTimeout(cleanupEffect, duration + 180);
+      state.removalEffects.add(effect);
+
       animation.finished
         .catch(() => {})
-        .finally(() => {
-          ghost.remove();
-        });
+        .finally(cleanupEffect);
     });
   }
 
@@ -1169,9 +1264,11 @@
     state.lastDragFeedbackAt = 0;
     state.lastSelectionSignature = "";
     state.lastSelectionIsGood = false;
+    clearRemovalEffects();
     clearHintPreview();
     clearSelectionVisuals();
     hideComboChip();
+    syncBodyUiState();
   }
 
   function clearTimer() {
@@ -1249,6 +1346,7 @@
     hideGameOver();
     hideToast();
     clearSelectionVisuals();
+    syncBodyUiState();
     updateModeUI();
   }
 
@@ -1416,6 +1514,7 @@
     state.isGameActive = false;
     state.isResolving = false;
     cancelDrag(false);
+    syncBodyUiState();
     updateHintButton();
 
     const summary = buildSingleSummary();
@@ -1726,6 +1825,7 @@
     cancelDrag(false);
     clearHintPreview();
     hideToast();
+    syncBodyUiState();
 
     const myScoreEntry = result.scores.find((entry) => entry.socketId === state.mySocketId);
     const opponentEntry = result.scores.find((entry) => entry.socketId !== state.mySocketId);
@@ -1863,6 +1963,7 @@
     setMessage(message || "상대가 나가서 대기실로 돌아갑니다.", "bad", { sticky: true });
     state.isGameActive = false;
     state.isResolving = false;
+    syncBodyUiState();
     if (state.currentRoom) {
       state.currentRoom.gameStarted = false;
       state.currentRoom.gameEnded = false;
@@ -1876,6 +1977,7 @@
     clearTimer();
     state.isGameActive = false;
     state.isResolving = false;
+    syncBodyUiState();
     scheduleViewportSync();
   }
 
