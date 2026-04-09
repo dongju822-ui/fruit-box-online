@@ -18,6 +18,8 @@
     audioCtx: null,
     audioUnlocked: false,
     bgmAudio: null,
+    bgmSource: null,
+    bgmGain: null,
     unlockHandlersBound: false,
     lastSelectAt: 0,
     lastClearPreviewAt: 0,
@@ -77,6 +79,17 @@
     } catch (error) {}
   }
 
+  function getAudioContext() {
+    if (!state.audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        state.audioCtx = new AudioContextClass();
+      }
+    }
+
+    return state.audioCtx;
+  }
+
   function createBgmAudio() {
     if (state.bgmAudio) return state.bgmAudio;
 
@@ -85,14 +98,64 @@
     audio.preload = "auto";
     audio.crossOrigin = "anonymous";
     audio.playsInline = true;
+    audio.volume = 1;
+    audio.muted = false;
     audio.setAttribute("playsinline", "");
     audio.setAttribute("webkit-playsinline", "");
     state.bgmAudio = audio;
     return audio;
   }
 
+  function ensureBgmGraph() {
+    const ctx = getAudioContext();
+    const bgm = createBgmAudio();
+
+    if (!ctx || state.bgmGain) {
+      return { ctx, bgm };
+    }
+
+    try {
+      state.bgmSource = ctx.createMediaElementSource(bgm);
+      state.bgmGain = ctx.createGain();
+      state.bgmGain.gain.value = 0;
+      state.bgmSource.connect(state.bgmGain);
+      state.bgmGain.connect(ctx.destination);
+    } catch (error) {
+      state.bgmSource = null;
+      state.bgmGain = null;
+    }
+
+    return { ctx, bgm };
+  }
+
   function isPageVisible() {
     return document.visibilityState !== "hidden";
+  }
+
+  function getTargetBgmVolume() {
+    return state.settings.bgmEnabled ? state.settings.bgmVolume : 0;
+  }
+
+  function applyBgmVolume(targetVolume) {
+    const safeVolume = clamp01(targetVolume, 0);
+    const bgm = createBgmAudio();
+    bgm.muted = false;
+    bgm.defaultMuted = false;
+
+    if (state.bgmGain && state.audioCtx) {
+      const now = state.audioCtx.currentTime;
+      try {
+        state.bgmGain.gain.cancelScheduledValues(now);
+        state.bgmGain.gain.setValueAtTime(state.bgmGain.gain.value, now);
+        state.bgmGain.gain.linearRampToValueAtTime(safeVolume, now + 0.012);
+      } catch (error) {
+        state.bgmGain.gain.value = safeVolume;
+      }
+      bgm.volume = 1;
+      return;
+    }
+
+    bgm.volume = safeVolume;
   }
 
   function bindUnlockHandlers() {
@@ -113,18 +176,15 @@
   function ensureAudio() {
     bindUnlockHandlers();
 
-    if (!state.audioCtx) {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) state.audioCtx = new AudioContextClass();
-    }
-
-    if (state.audioCtx && state.audioCtx.state === "suspended") {
-      state.audioCtx.resume().catch(() => {});
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
     }
 
     state.audioUnlocked = true;
+    ensureBgmGraph();
     syncBgmAudio({ attemptPlay: true });
-    return state.audioCtx;
+    return ctx;
   }
 
   function pauseBgm() {
@@ -134,16 +194,22 @@
   }
 
   function syncBgmAudio({ attemptPlay = false } = {}) {
-    const bgm = createBgmAudio();
-    bgm.volume = state.settings.bgmEnabled ? state.settings.bgmVolume : 0;
+    const { ctx, bgm } = ensureBgmGraph();
+    const targetVolume = getTargetBgmVolume();
 
-    if (!state.settings.bgmEnabled || bgm.volume <= 0.0001) {
+    applyBgmVolume(targetVolume);
+
+    if (!state.settings.bgmEnabled || targetVolume <= 0.0001) {
       bgm.pause();
       return bgm;
     }
 
     if (!attemptPlay || !state.audioUnlocked || !isPageVisible()) {
       return bgm;
+    }
+
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
     }
 
     const playPromise = bgm.play();
@@ -307,6 +373,8 @@
   }
 
   bindUnlockHandlers();
+  createBgmAudio();
+  applyBgmVolume(getTargetBgmVolume());
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {

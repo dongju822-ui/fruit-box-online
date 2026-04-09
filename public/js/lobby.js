@@ -132,10 +132,12 @@
       App.audio.playUiSound();
       syncSettingsUi();
       dom.settingsOverlay.classList.remove("hidden");
+      App.game.refreshViewportUi?.();
     }
 
     function closeSettings() {
       dom.settingsOverlay.classList.add("hidden");
+      App.game.refreshViewportUi?.();
     }
 
     function getPlayerName() {
@@ -183,6 +185,7 @@
       setActivePanel("single");
       renderMenuData();
       closeSettings();
+      App.game.refreshViewportUi?.();
     }
 
     function showLobbyError(message) {
@@ -433,8 +436,8 @@
       });
     });
 
-    dom.restartBtn.addEventListener("click", App.game.handleRestartIntent);
-    dom.restartBtnTop.addEventListener("click", App.game.handleRestartIntent);
+    dom.restartBtn?.addEventListener("click", App.game.handleRestartIntent);
+    dom.restartBtnTop?.addEventListener("click", App.game.handleRestartIntent);
 
     dom.restartBtnModal.addEventListener("click", () => {
       App.audio.ensureAudio();

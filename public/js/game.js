@@ -10,6 +10,9 @@
   const HINT_DURATION_MS = 2200;
   const HINT_COOLDOWN_MS = 10000;
   const HINT_MAX_USES = 2;
+  const MOBILE_BREAKPOINT = 900;
+  const VIEWPORT_SYNC_DELAY_MS = 160;
+  const VIEWPORT_SETTLE_DELAY_MS = 360;
   const SINGLE_RECORDS_KEY = "fruitbox-single-records";
   const DAILY_PROGRESS_KEY = "fruitbox-daily-progress";
   const SINGLE_MODE_PRESETS = Object.freeze({
@@ -45,10 +48,18 @@
     dragCurrent: null,
     selectedPositions: [],
     dragVisitedKeys: new Set(),
+    highlightedCells: [],
+    hintCells: [],
     lastDragFeedbackAt: 0,
+    lastSelectionSignature: "",
+    lastSelectionIsGood: false,
     layout: null,
     boardLayoutRaf: null,
+    pendingSelectionRaf: null,
+    queuedDragPos: null,
     resizeObserver: null,
+    viewportSyncTimerId: null,
+    viewportSettleTimerId: null,
     toastTimerId: null,
     dropLayer: null,
     singleConfig: {
@@ -294,6 +305,33 @@
     return hasTouch && typeof window.navigator.vibrate === "function" && !isIOSDevice();
   }
 
+  function isTouchViewport() {
+    const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+    return Boolean(coarsePointer || window.navigator.maxTouchPoints > 0);
+  }
+
+  function shouldUseLiteEffects() {
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    return Boolean(
+      reducedMotion
+      || isIOSDevice()
+      || (isTouchViewport() && (window.innerWidth <= 1024 || window.innerHeight <= 900))
+    );
+  }
+
+  function hasBlockingOverlayOpen() {
+    return Boolean(
+      !dom.startOverlay.classList.contains("hidden")
+      || !dom.roomOverlay.classList.contains("hidden")
+      || !dom.settingsOverlay.classList.contains("hidden")
+      || dom.gameOver.classList.contains("show")
+    );
+  }
+
+  function syncBodyUiState() {
+    document.body.classList.toggle("lite-effects", shouldUseLiteEffects());
+  }
+
   function isSingleMode() {
     return state.mode === "single";
   }
@@ -466,16 +504,43 @@
   }
 
   function updateMobileOrientationUI() {
-    const isMobile = window.innerWidth <= 900;
-    const isPortrait = window.innerHeight > window.innerWidth;
-    const hasOverlayOpen =
-      !dom.startOverlay.classList.contains("hidden")
-      || !dom.roomOverlay.classList.contains("hidden")
-      || !dom.settingsOverlay.classList.contains("hidden")
-      || dom.gameOver.classList.contains("show");
+    syncBodyUiState();
 
-    const shouldShowRotate = isMobile && isPortrait && state.isGameActive && !hasOverlayOpen;
+    const isMobile = isTouchViewport() && (window.innerWidth <= MOBILE_BREAKPOINT || window.innerHeight <= MOBILE_BREAKPOINT);
+    const isPortrait = window.matchMedia?.("(orientation: portrait)")?.matches ?? (window.innerHeight > window.innerWidth);
+    const shouldShowRotate = isMobile && isPortrait && state.isGameActive && !hasBlockingOverlayOpen();
     dom.rotateOverlay.classList.toggle("hidden", !shouldShowRotate);
+    document.body.classList.toggle("rotate-locked", shouldShowRotate);
+
+    if (shouldShowRotate) {
+      if (state.isDragging) cancelDrag(false);
+      clearHintPreview();
+    }
+  }
+
+  function scheduleViewportSync() {
+    updateMobileOrientationUI();
+    scheduleBoardLayout();
+
+    if (state.viewportSyncTimerId !== null) {
+      window.clearTimeout(state.viewportSyncTimerId);
+    }
+
+    if (state.viewportSettleTimerId !== null) {
+      window.clearTimeout(state.viewportSettleTimerId);
+    }
+
+    state.viewportSyncTimerId = window.setTimeout(() => {
+      state.viewportSyncTimerId = null;
+      updateMobileOrientationUI();
+      scheduleBoardLayout();
+    }, VIEWPORT_SYNC_DELAY_MS);
+
+    state.viewportSettleTimerId = window.setTimeout(() => {
+      state.viewportSettleTimerId = null;
+      updateMobileOrientationUI();
+      scheduleBoardLayout();
+    }, VIEWPORT_SETTLE_DELAY_MS);
   }
 
   function createSeededRandom(seed) {
@@ -587,6 +652,7 @@
   function refreshBoardMetrics() {
     if (!dom.board || !dom.boardFrame) return;
 
+    const frameRect = dom.boardFrame.getBoundingClientRect();
     const boardRect = dom.board.getBoundingClientRect();
     if (!boardRect.width || !boardRect.height) return;
 
@@ -602,6 +668,8 @@
 
     state.layout = {
       boardRect: finalRect,
+      boardOffsetLeft: finalRect.left - frameRect.left,
+      boardOffsetTop: finalRect.top - frameRect.top,
       gapX: gap,
       gapY: gap,
       cellWidth,
@@ -619,9 +687,9 @@
 
   function resetCellHighlight(cell) {
     if (!cell) return;
-    cell.classList.remove("selected", "good", "hint-preview");
+    cell.classList.remove("selected", "good", "hint-preview", "drag-entry");
 
-    const apple = cell.querySelector(".apple");
+    const apple = cell._appleEl;
     if (apple) {
       apple.style.transform = "";
       apple.style.transition = "";
@@ -644,6 +712,10 @@
 
     dom.board.innerHTML = "";
     state.cellEls = [];
+    state.highlightedCells = [];
+    state.hintCells = [];
+    state.lastSelectionSignature = "";
+    state.lastSelectionIsGood = false;
 
     for (let row = 0; row < state.ROWS; row += 1) {
       const rowEls = [];
@@ -662,6 +734,8 @@
             <span class="apple-num">${state.board[row][col].value}</span>
           </div>
         `;
+        cell._appleEl = cell.querySelector(".apple");
+        cell._appleNumEl = cell.querySelector(".apple-num");
         dom.board.appendChild(cell);
         rowEls.push(cell);
       }
@@ -678,7 +752,7 @@
       for (let col = 0; col < state.COLS; col += 1) {
         const cell = state.cellEls[row][col];
         const cellData = state.board[row][col];
-        const appleNum = cell.querySelector(".apple-num");
+        const appleNum = cell._appleNumEl;
 
         resetCellHighlight(cell);
 
@@ -709,12 +783,10 @@
   }
 
   function clearSelectionVisuals() {
-    for (let row = 0; row < state.cellEls.length; row += 1) {
-      for (let col = 0; col < state.cellEls[row].length; col += 1) {
-        const cell = state.cellEls[row][col];
-        cell.classList.remove("selected", "good");
-      }
-    }
+    state.highlightedCells.forEach((cell) => {
+      cell?.classList.remove("selected", "good");
+    });
+    state.highlightedCells = [];
 
     dom.selectionRect.style.display = "none";
     dom.selectionRect.classList.remove("good");
@@ -728,12 +800,10 @@
 
     state.hintPreview = null;
     dom.hintRect.style.display = "none";
-
-    for (let row = 0; row < state.cellEls.length; row += 1) {
-      for (let col = 0; col < state.cellEls[row].length; col += 1) {
-        state.cellEls[row][col].classList.remove("hint-preview");
-      }
-    }
+    state.hintCells.forEach((cell) => {
+      cell?.classList.remove("hint-preview");
+    });
+    state.hintCells = [];
   }
 
   function paintSelectedCells(isGood) {
@@ -744,28 +814,28 @@
         const cell = state.cellEls[pos.row][pos.col];
         cell.classList.add("selected");
         if (isGood) cell.classList.add("good");
+        state.highlightedCells.push(cell);
       }
     }
   }
 
   function updateSelectionRect(target, minRow, minCol, maxRow, maxCol, className = "") {
-    const firstCell = state.cellEls[minRow][minCol];
-    const lastCell = state.cellEls[maxRow][maxCol];
-    if (!firstCell || !lastCell) return;
+    if (!state.layout) {
+      refreshBoardMetrics();
+    }
 
-    const frameRect = dom.boardFrame.getBoundingClientRect();
-    const firstRect = firstCell.getBoundingClientRect();
-    const lastRect = lastCell.getBoundingClientRect();
+    const layout = state.layout;
+    if (!layout) return;
 
-    const left = firstRect.left - frameRect.left;
-    const top = firstRect.top - frameRect.top;
-    const right = lastRect.right - frameRect.left;
-    const bottom = lastRect.bottom - frameRect.top;
+    const left = layout.boardOffsetLeft + (minCol * layout.cellSpanX);
+    const top = layout.boardOffsetTop + (minRow * layout.cellSpanY);
+    const width = layout.cellWidth + ((maxCol - minCol) * layout.cellSpanX);
+    const height = layout.cellHeight + ((maxRow - minRow) * layout.cellSpanY);
 
     target.style.left = `${left}px`;
     target.style.top = `${top}px`;
-    target.style.width = `${right - left}px`;
-    target.style.height = `${bottom - top}px`;
+    target.style.width = `${width}px`;
+    target.style.height = `${height}px`;
     target.style.display = "block";
     if (target === dom.selectionRect) {
       target.classList.toggle("good", className === "good");
@@ -780,6 +850,7 @@
     preview.positions.forEach((pos) => {
       const cell = state.cellEls[pos.row]?.[pos.col];
       cell?.classList.add("hint-preview");
+      if (cell) state.hintCells.push(cell);
     });
 
     updateSelectionRect(
@@ -839,6 +910,12 @@
     const maxRow = Math.max(start.row, end.row);
     const minCol = Math.min(start.col, end.col);
     const maxCol = Math.max(start.col, end.col);
+    const signature = `${minRow}:${minCol}:${maxRow}:${maxCol}`;
+
+    if (signature === state.lastSelectionSignature) {
+      updateSelectionRect(dom.selectionRect, minRow, minCol, maxRow, maxCol, state.lastSelectionIsGood ? "good" : "");
+      return;
+    }
 
     state.selectedPositions = [];
     let count = 0;
@@ -856,17 +933,27 @@
 
     const isGood = count > 0 && sum === 10;
     paintSelectedCells(isGood);
+    state.lastSelectionSignature = signature;
+    state.lastSelectionIsGood = isGood;
     updateSelectionRect(dom.selectionRect, minRow, minCol, maxRow, maxCol, isGood ? "good" : "");
   }
 
   function cancelDrag(clearToast = false) {
+    if (state.pendingSelectionRaf !== null) {
+      window.cancelAnimationFrame(state.pendingSelectionRaf);
+      state.pendingSelectionRaf = null;
+    }
+
     state.isDragging = false;
     state.activePointerId = null;
     state.dragStart = null;
     state.dragCurrent = null;
+    state.queuedDragPos = null;
     state.selectedPositions = [];
     state.dragVisitedKeys = new Set();
     state.lastDragFeedbackAt = 0;
+    state.lastSelectionSignature = "";
+    state.lastSelectionIsGood = false;
     clearSelectionVisuals();
 
     if (clearToast) {
@@ -888,18 +975,17 @@
     const cell = state.cellEls[pos.row]?.[pos.col];
     if (!cell) return;
 
-    if (cell._dragEntryTimer) {
-      window.clearTimeout(cell._dragEntryTimer);
-      cell._dragEntryTimer = null;
-    }
+    if (!shouldUseLiteEffects()) {
+      if (cell._dragEntryTimer) {
+        window.clearTimeout(cell._dragEntryTimer);
+      }
 
-    cell.classList.remove("drag-entry");
-    void cell.offsetWidth;
-    cell.classList.add("drag-entry");
-    cell._dragEntryTimer = window.setTimeout(() => {
-      cell.classList.remove("drag-entry");
-      cell._dragEntryTimer = null;
-    }, 150);
+      cell.classList.add("drag-entry");
+      cell._dragEntryTimer = window.setTimeout(() => {
+        cell.classList.remove("drag-entry");
+        cell._dragEntryTimer = null;
+      }, 96);
+    }
 
     const now = performance.now();
     if (now - state.lastDragFeedbackAt < DRAG_FEEDBACK_THROTTLE_MS) return;
@@ -914,6 +1000,34 @@
     }
   }
 
+  function flushQueuedSelection() {
+    if (state.pendingSelectionRaf !== null) {
+      window.cancelAnimationFrame(state.pendingSelectionRaf);
+      state.pendingSelectionRaf = null;
+    }
+
+    if (!state.isDragging || !state.dragStart || !state.queuedDragPos) {
+      state.queuedDragPos = null;
+      return;
+    }
+
+    const nextPos = state.queuedDragPos;
+    state.queuedDragPos = null;
+    state.dragCurrent = nextPos;
+    triggerDragEntryFeedback(nextPos);
+    updateSelection(state.dragStart, nextPos);
+  }
+
+  function queueSelectionUpdate(nextPos) {
+    state.queuedDragPos = nextPos;
+    if (state.pendingSelectionRaf !== null) return;
+
+    state.pendingSelectionRaf = window.requestAnimationFrame(() => {
+      state.pendingSelectionRaf = null;
+      flushQueuedSelection();
+    });
+  }
+
   function cubicCurve(t, p0, p1, p2, p3) {
     const omt = 1 - t;
     return (omt * omt * omt * p0)
@@ -926,10 +1040,15 @@
     const dropLayer = ensureDropLayer();
     const frameRect = dom.boardFrame.getBoundingClientRect();
     const boardHeight = dom.boardFrame.clientHeight || dom.board.clientHeight || 600;
+    const liteEffects = shouldUseLiteEffects();
+    const maxGhosts = liteEffects ? Math.min(12, positions.length) : positions.length;
+    const sampleStep = Math.max(1, Math.ceil(positions.length / Math.max(1, maxGhosts)));
 
     positions.forEach((pos, index) => {
+      if (liteEffects && index % sampleStep !== 0) return;
+
       const cell = state.cellEls[pos.row]?.[pos.col];
-      const apple = cell?.querySelector(".apple");
+      const apple = cell?._appleEl;
       if (!cell || !apple) return;
 
       const appleRect = apple.getBoundingClientRect();
@@ -952,35 +1071,54 @@
       dropLayer.appendChild(ghost);
 
       const centerBias = (pos.col - ((state.COLS - 1) / 2)) / (((state.COLS - 1) / 2) || 1);
-      const driftX = (centerBias * 54) + (Math.random() * 18 - 9);
-      const liftY = 40 + Math.random() * 16;
-      const fallY = boardHeight + 120 + Math.random() * 44;
-      const duration = 860 + Math.min(index * 16, 96);
-
-      const keyframes = [];
-      const steps = 90;
-
-      for (let i = 0; i < steps; i += 1) {
-        const t = i / (steps - 1);
-        const x = cubicCurve(t, 0, driftX * 0.18, driftX * 0.72, driftX);
-        const y = cubicCurve(t, 0, -liftY, fallY * 0.34, fallY);
-        const wobble = Math.sin(t * Math.PI * 2.35) * (1 - t) * (4 + Math.abs(driftX) * 0.03);
-        const rotate = (driftX * 0.22 * t) + wobble;
-        const squash = Math.max(0, 1 - (t / 0.16));
-        const scaleX = 1 + (0.05 * squash) - (0.04 * t);
-        const scaleY = 1 - (0.06 * squash) - (0.08 * t);
-        const opacity = t < 0.72 ? 1 : 1 - ((t - 0.72) / 0.28);
-
-        keyframes.push({
-          transform: `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) rotate(${rotate.toFixed(2)}deg) scale(${scaleX.toFixed(4)}, ${scaleY.toFixed(4)})`,
-          opacity: Math.max(0, Math.min(1, opacity)).toFixed(4),
-          offset: t
-        });
-      }
+      const driftX = liteEffects
+        ? (centerBias * 26) + (Math.random() * 10 - 5)
+        : (centerBias * 44) + (Math.random() * 16 - 8);
+      const liftY = liteEffects ? 14 + (Math.random() * 10) : 28 + (Math.random() * 14);
+      const fallY = boardHeight + (liteEffects ? 56 : 96) + (Math.random() * (liteEffects ? 22 : 36));
+      const duration = liteEffects ? 240 + Math.min(index * 8, 60) : 420 + Math.min(index * 12, 108);
+      const keyframes = liteEffects
+        ? [
+            {
+              transform: "translate3d(0, 0, 0) scale(1)",
+              opacity: 1
+            },
+            {
+              transform: `translate3d(${(driftX * 0.35).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) scale(0.96)`,
+              opacity: 0.9,
+              offset: 0.32
+            },
+            {
+              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) scale(0.72)`,
+              opacity: 0,
+              offset: 1
+            }
+          ]
+        : [
+            {
+              transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)",
+              opacity: 1
+            },
+            {
+              transform: `translate3d(${(driftX * 0.22).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) rotate(${(driftX * 0.08).toFixed(2)}deg) scale(1.02)`,
+              opacity: 0.98,
+              offset: 0.22
+            },
+            {
+              transform: `translate3d(${(driftX * 0.7).toFixed(2)}px, ${(fallY * 0.4).toFixed(2)}px, 0) rotate(${(driftX * 0.18).toFixed(2)}deg) scale(0.92)`,
+              opacity: 0.7,
+              offset: 0.62
+            },
+            {
+              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) rotate(${(driftX * 0.3).toFixed(2)}deg) scale(0.76)`,
+              opacity: 0,
+              offset: 1
+            }
+          ];
 
       const animation = ghost.animate(keyframes, {
         duration,
-        easing: "linear",
+        easing: liteEffects ? "ease-in" : "cubic-bezier(0.2, 0.7, 0.15, 1)",
         fill: "forwards"
       });
 
@@ -1008,16 +1146,25 @@
   }
 
   function resetPlayState() {
+    if (state.pendingSelectionRaf !== null) {
+      window.cancelAnimationFrame(state.pendingSelectionRaf);
+      state.pendingSelectionRaf = null;
+    }
+
     state.isGameActive = false;
     state.isDragging = false;
     state.isResolving = false;
     state.activePointerId = null;
     state.dragStart = null;
     state.dragCurrent = null;
+    state.queuedDragPos = null;
     state.selectedPositions = [];
     state.dragVisitedKeys = new Set();
     state.lastDragFeedbackAt = 0;
+    state.lastSelectionSignature = "";
+    state.lastSelectionIsGood = false;
     clearHintPreview();
+    clearSelectionVisuals();
     hideComboChip();
   }
 
@@ -1044,12 +1191,13 @@
 
   function hideGameOver() {
     dom.gameOver.classList.remove("show");
-    updateMobileOrientationUI();
+    scheduleViewportSync();
   }
 
   function applyResultScreen(config) {
     const resultClass = config.resultClass || "result-neutral";
     dom.resultCard.className = `game-over-card ${resultClass}`;
+    dom.resultCard.dataset.flow = config.showRematch ? "online" : "single";
     dom.resultModeBadge.textContent = config.modeBadge || "RESULT";
     dom.resultStatePill.textContent = config.stateBadge || "RESULT";
     dom.resultIcon.textContent = config.icon || "★";
@@ -1071,8 +1219,10 @@
 
   function showGameOver(config) {
     applyResultScreen(config);
+    dom.resultCard.scrollTop = 0;
+    dom.gameOver.scrollTop = 0;
     dom.gameOver.classList.add("show");
-    updateMobileOrientationUI();
+    scheduleViewportSync();
   }
 
   function prepareGameStart() {
@@ -1495,6 +1645,7 @@
     renderBoard();
     updateTime();
     startTimer();
+    scheduleViewportSync();
     App.audio.ensureAudio();
     App.audio.playStartSound();
   }
@@ -1530,6 +1681,7 @@
     renderBoard();
     updateTime();
     startTimer();
+    scheduleViewportSync();
   }
 
   function handleGameStart(payload) {
@@ -1538,6 +1690,7 @@
     dom.roomOverlay.classList.add("hidden");
     hideToast();
     startSharedGame(payload);
+    scheduleViewportSync();
   }
 
   function handleGameResult(result) {
@@ -1642,6 +1795,7 @@
     renderBoard();
     updateTime();
     emitMenuDataChange();
+    scheduleViewportSync();
   }
 
   function setPlayerIdentity({ socketId = null, name = "", roomCode = "" } = {}) {
@@ -1656,7 +1810,7 @@
     hideGameOver();
     hideToast();
     dom.startOverlay.classList.add("hidden");
-    updateMobileOrientationUI();
+    scheduleViewportSync();
   }
 
   function handleRoomUpdate(room) {
@@ -1679,7 +1833,7 @@
       state.currentRoom.gameStarted = false;
       state.currentRoom.gameEnded = false;
     }
-    updateMobileOrientationUI();
+    scheduleViewportSync();
   }
 
   function handleDisconnect() {
@@ -1688,7 +1842,7 @@
     clearTimer();
     state.isGameActive = false;
     state.isResolving = false;
-    updateMobileOrientationUI();
+    scheduleViewportSync();
   }
 
   function handleRestartIntent() {
@@ -1754,9 +1908,7 @@
       if (!pos) return;
       if (state.dragCurrent && state.dragCurrent.row === pos.row && state.dragCurrent.col === pos.col) return;
 
-      state.dragCurrent = pos;
-      triggerDragEntryFeedback(pos);
-      updateSelection(state.dragStart, state.dragCurrent);
+      queueSelectionUpdate(pos);
     }, { passive: false });
 
     window.addEventListener("pointerup", async (event) => {
@@ -1769,6 +1921,8 @@
         clampToBoard: true,
         forgiving: true
       });
+
+      flushQueuedSelection();
 
       if (pos) {
         state.dragCurrent = pos;
@@ -1791,14 +1945,14 @@
     });
 
     window.addEventListener("resize", () => {
-      updateMobileOrientationUI();
-      scheduleBoardLayout();
+      scheduleViewportSync();
     });
 
     window.addEventListener("orientationchange", () => {
-      updateMobileOrientationUI();
-      scheduleBoardLayout();
+      scheduleViewportSync();
     });
+
+    window.visualViewport?.addEventListener("resize", scheduleViewportSync);
 
     dom.hintBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
@@ -1813,7 +1967,7 @@
     bindBoardEvents();
     initBoardObserver();
     setMode("menu");
-    updateMobileOrientationUI();
+    scheduleViewportSync();
     state.ROWS = DEFAULT_ROWS;
     state.COLS = DEFAULT_COLS;
     state.DURATION = DEFAULT_DURATION;
@@ -1850,6 +2004,7 @@
     handleDisconnect,
     handleRestartIntent,
     setDailyChallenge,
+    refreshViewportUi: scheduleViewportSync,
     getMenuData,
     getState: () => state
   };
