@@ -24,7 +24,7 @@
   --radius-lg: 28px;
   --radius-md: 22px;
   --radius-sm: 16px;
-  --hud-height: clamp(88px, 11vh, 120px);
+  --hud-height: clamp(72px, 9vh, 96px);
   --app-gap: clamp(14px, 1.8vw, 24px);
   --app-pad: clamp(14px, 2.4vw, 30px);
   --frame-pad: 14px;
@@ -80,13 +80,7 @@ body::before {
 }
 
 body::after {
-  opacity: 0.18;
-  background-image:
-    radial-gradient(circle at 20px 20px, rgba(255, 132, 112, 0.6) 0 18px, transparent 19px),
-    linear-gradient(135deg, transparent 0 50%, rgba(122, 189, 84, 0.65) 50% 54%, transparent 54%);
-  background-size: 120px 120px, 120px 120px;
-  background-position: 0 0, 22px -12px;
-  filter: blur(1px);
+  opacity: 0;
 }
 
 button,
@@ -153,6 +147,18 @@ input {
     radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.18), transparent 40%);
 }
 
+.menu-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: -2%;
+  opacity: 0.18;
+  background-image:
+    radial-gradient(circle at 20px 20px, rgba(255, 132, 112, 0.6) 0 18px, transparent 19px),
+    linear-gradient(135deg, transparent 0 50%, rgba(122, 189, 84, 0.62) 50% 54%, transparent 54%);
+  background-size: 120px 120px, 120px 120px;
+  background-position: 0 0, 22px -12px;
+}
+
 .menu-scene {
   position: relative;
   z-index: 1;
@@ -165,8 +171,7 @@ input {
 
 .menu-toolbar,
 .menu-profile-bar,
-.hud,
-.board-footer {
+.hud {
   border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.72);
@@ -746,6 +751,8 @@ input {
   width: 100%;
   height: 100%;
   padding: max(var(--app-pad), env(safe-area-inset-top)) max(var(--app-pad), env(safe-area-inset-right)) max(var(--app-pad), env(safe-area-inset-bottom)) max(var(--app-pad), env(safe-area-inset-left));
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(248, 252, 247, 0.98), rgba(225, 240, 226, 0.98));
 }
 
 .hud {
@@ -754,7 +761,7 @@ input {
   gap: clamp(12px, 1.2vw, 18px);
   align-items: center;
   min-height: 0;
-  padding: 12px;
+  padding: 10px 12px;
 }
 
 .hud-left,
@@ -782,8 +789,8 @@ input {
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 64px;
-  padding: 0 18px;
+  min-height: 56px;
+  padding: 0 16px;
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.8);
 }
@@ -836,8 +843,8 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  min-height: 64px;
-  padding: 0 20px;
+  min-height: 56px;
+  padding: 0 18px;
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.8);
 }
@@ -882,7 +889,7 @@ input {
 .machine {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 14px;
+  gap: 8px;
   min-height: 0;
 }
 
@@ -1065,8 +1072,12 @@ input {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 68px;
-  padding: 10px 16px;
+  min-height: 0;
+  padding: 2px 0 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .footer-info {
@@ -1074,6 +1085,10 @@ input {
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(46, 104, 78, 0.08);
 }
 
 .status-toast {
@@ -1242,6 +1257,14 @@ input {
   min-height: 58px;
 }
 
+.game-over-card[data-flow="online"] .result-meta-card {
+  display: none;
+}
+
+.game-over-card[data-flow="online"] .result-meta {
+  margin-top: 4px;
+}
+
 .result-win .result-state-pill,
 .result-clear .result-state-pill {
   color: #305339;
@@ -1324,18 +1347,6 @@ body.lite-effects::after,
   .mode-card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .menu-profile-bar,
-  .hud {
-    grid-template-columns: 1fr;
-  }
-
-  .hud-center,
-  .hud-right,
-  .hud-left {
-    width: 100%;
-    justify-content: space-between;
-  }
 }
 
 @media (max-width: 960px) {
@@ -1380,49 +1391,55 @@ body.lite-effects::after,
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) and (orientation: landscape) {
   :root {
-    --hud-height: auto;
-    --app-gap: 12px;
-    --app-pad: 12px;
-  }
-
-  .app {
-    grid-template-rows: auto minmax(0, 1fr);
+    --hud-height: 70px;
+    --app-gap: 8px;
+    --app-pad: 10px;
   }
 
   .menu-icon-btn,
   .hud-icon-btn,
   .mode-back-btn {
-    width: 56px;
-    height: 56px;
-    border-radius: 20px;
+    width: 52px;
+    height: 52px;
+    border-radius: 18px;
   }
 
   .time-chip {
     grid-template-columns: auto auto 1fr;
-    padding: 0 14px;
+    padding: 0 12px;
+    min-height: 52px;
   }
 
   .time-number {
-    font-size: 2rem;
+    font-size: 1.9rem;
   }
 
-  .score-strip {
-    flex-wrap: wrap;
-  }
-
-  .score-card {
-    width: 100%;
+  .score-card,
+  .hud-text-btn,
+  .mode-play-btn,
+  .big-btn,
+  .sub-btn {
+    min-height: 52px;
   }
 
   .board-frame {
     border-radius: 28px;
   }
 
-  .board-bg-grid,
-  .board {
-    inset: max(10px, var(--frame-pad));
+  .result-actions .big-btn,
+  .result-actions .sub-btn {
+    min-width: 180px;
+  }
+}
+
+@media (max-width: 720px) {
+  .main-menu-actions,
+  .mode-card-grid,
+  .online-card-grid,
+  .menu-profile-stats {
+    grid-template-columns: 1fr;
   }
 
   .panel,
@@ -1431,46 +1448,29 @@ body.lite-effects::after,
     border-radius: 28px;
   }
 
-  .result-actions .big-btn,
-  .result-actions .sub-btn,
   .room-code-row,
   .settings-row,
   .settings-toggle-row {
     width: 100%;
-  }
-
-  .room-code-row,
-  .settings-row,
-  .settings-toggle-row {
     flex-direction: column;
     align-items: stretch;
   }
-
-  .toggle-pill,
-  .mode-play-btn,
-  .big-btn,
-  .sub-btn,
-  .hud-text-btn {
-    min-height: 58px;
-  }
 }
 
-@media (orientation: portrait) and (max-width: 1024px) {
+@media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
   html,
   body {
-    overflow: auto;
+    overflow: hidden;
+  }
+
+  .rotate-overlay.hidden {
+    display: grid !important;
+    z-index: 60;
   }
 
   .start-overlay,
+  .app,
   .game-over {
-    overflow: auto;
-  }
-
-  .app {
-    min-height: 100vh;
-  }
-
-  .machine {
-    grid-template-rows: minmax(320px, 1fr) auto;
+    filter: blur(4px);
   }
 }
