@@ -1171,9 +1171,10 @@
         liteEffects ? 42 : 58
       );
       const prepY = clamp(appleRect.height * 0.14, 4, 9);
-      const driftX = (direction * (liteEffects
-        ? clamp(appleRect.width * 0.42, 10, 18)
-        : clamp(appleRect.width * 0.52, 14, 24))) + (centerBias * (liteEffects ? 3 : 5));
+      const driftMagnitude = liteEffects
+        ? clamp((appleRect.width * 0.72) + (Math.random() * 6), 18, 30)
+        : clamp((appleRect.width * 0.9) + (Math.random() * 8), 24, 42);
+      const driftX = (direction * driftMagnitude) + (centerBias * (liteEffects ? 5 : 7));
       const fallY = boardHeight + appleRect.height + (liteEffects ? 74 : 112) + (Math.random() * (liteEffects ? 16 : 26));
       const delay = liteEffects ? Math.min(order * 16, 72) : Math.min(order * 14, 96);
       const duration = liteEffects ? 720 + Math.min(order * 20, 108) : 980 + Math.min(order * 22, 176);
@@ -1194,7 +1195,7 @@
         if (t <= 0.08) {
           const prepProgress = t / 0.08;
           const easedPrep = 1 - Math.pow(1 - prepProgress, 3);
-          x = driftX * 0.03 * easedPrep;
+          x = driftX * 0.12 * easedPrep;
           y = prepY * easedPrep;
           scale = 1 - (0.06 * easedPrep);
           rotation = baseRotation * 0.08 * easedPrep;
@@ -1202,7 +1203,7 @@
         } else {
           const u = (t - 0.08) / 0.92;
           const ballisticY = prepY + (launchVelocity * u) + (0.5 * gravity * u * u);
-          const horizontalProgress = 0.18 * u + 0.82 * (u * u);
+          const horizontalProgress = clamp(u * 1.02, 0, 1);
           const descendProgress = clamp((u - 0.54) / 0.46, 0, 1);
           const ascendProgress = clamp(u / apexAt, 0, 1);
 
