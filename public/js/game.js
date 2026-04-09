@@ -1168,8 +1168,8 @@
         : (centerBias * 20) + (Math.random() * 10 - 5);
       const liftY = liteEffects ? 12 + (Math.random() * 8) : 18 + (Math.random() * 12);
       const fallY = boardHeight + (liteEffects ? 84 : 126) + (Math.random() * (liteEffects ? 22 : 36));
-      const delay = liteEffects ? Math.min(order * 24, 120) : Math.min(order * 18, 132);
-      const duration = liteEffects ? 560 + Math.min(order * 24, 128) : 820 + Math.min(order * 22, 170);
+      const delay = liteEffects ? Math.min(order * 20, 96) : Math.min(order * 16, 112);
+      const duration = liteEffects ? 640 + Math.min(order * 24, 132) : 920 + Math.min(order * 24, 180);
       const keyframes = liteEffects
         ? [
             {
@@ -1177,14 +1177,19 @@
               opacity: 1
             },
             {
-              transform: `translate3d(0px, ${(-liftY * 0.5).toFixed(2)}px, 0) scale(0.99)`,
+              transform: `translate3d(0px, ${(liftY * 0.12).toFixed(2)}px, 0) scale(0.95)`,
               opacity: 1,
-              offset: 0.24
+              offset: 0.1
             },
             {
-              transform: `translate3d(${(driftX * 0.38).toFixed(2)}px, ${(fallY * 0.54).toFixed(2)}px, 0) scale(0.84)`,
-              opacity: 0.88,
-              offset: 0.72
+              transform: `translate3d(0px, ${(-liftY * 0.52).toFixed(2)}px, 0) scale(1.01)`,
+              opacity: 1,
+              offset: 0.28
+            },
+            {
+              transform: `translate3d(${(driftX * 0.34).toFixed(2)}px, ${(fallY * 0.46).toFixed(2)}px, 0) scale(0.9)`,
+              opacity: 0.92,
+              offset: 0.66
             },
             {
               transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) scale(0.68)`,
@@ -1198,19 +1203,24 @@
               opacity: 1
             },
             {
+              transform: `translate3d(0px, ${(liftY * 0.16).toFixed(2)}px, 0) rotate(${(driftX * 0.02).toFixed(2)}deg) scale(0.95)`,
+              opacity: 1,
+              offset: 0.08
+            },
+            {
               transform: `translate3d(0px, ${(-liftY).toFixed(2)}px, 0) rotate(${(driftX * 0.03).toFixed(2)}deg) scale(1.02)`,
               opacity: 1,
-              offset: 0.18
+              offset: 0.24
             },
             {
-              transform: `translate3d(${(driftX * 0.24).toFixed(2)}px, ${(fallY * 0.28).toFixed(2)}px, 0) rotate(${(driftX * 0.08).toFixed(2)}deg) scale(0.96)`,
-              opacity: 0.94,
-              offset: 0.36
+              transform: `translate3d(${(driftX * 0.22).toFixed(2)}px, ${(fallY * 0.2).toFixed(2)}px, 0) rotate(${(driftX * 0.08).toFixed(2)}deg) scale(0.98)`,
+              opacity: 0.96,
+              offset: 0.42
             },
             {
-              transform: `translate3d(${(driftX * 0.56).toFixed(2)}px, ${(fallY * 0.66).toFixed(2)}px, 0) rotate(${(driftX * 0.14).toFixed(2)}deg) scale(0.86)`,
-              opacity: 0.76,
-              offset: 0.78
+              transform: `translate3d(${(driftX * 0.52).toFixed(2)}px, ${(fallY * 0.62).toFixed(2)}px, 0) rotate(${(driftX * 0.14).toFixed(2)}deg) scale(0.88)`,
+              opacity: 0.82,
+              offset: 0.8
             },
             {
               transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) rotate(${(driftX * 0.18).toFixed(2)}deg) scale(0.7)`,
@@ -1275,7 +1285,7 @@
         effect.animation = animation;
         effect.cleanupTimerId = window.setTimeout(
           cleanupEffect,
-          Number(options.delay || 0) + Number(options.duration || 0) + 260
+          Number(options.delay || 0) + Number(options.duration || 0) + 320
         );
 
         animation.finished
