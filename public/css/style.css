@@ -618,10 +618,24 @@ input {
   gap: 20px;
 }
 
+.room-overlay {
+  align-items: center;
+}
+
+.room-panel {
+  width: min(100%, 920px);
+  max-height: min(calc(var(--viewport-height) - 36px), 760px);
+}
+
 .room-panel-head,
 .settings-head {
   display: grid;
   gap: 10px;
+}
+
+.room-panel-grid {
+  display: grid;
+  gap: 16px;
 }
 
 .room-code-chip-wrap,
@@ -634,6 +648,12 @@ input {
   border-radius: 24px;
   background: rgba(245, 250, 247, 0.9);
   border: 1px solid rgba(41, 82, 61, 0.08);
+}
+
+.room-player-title {
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
 }
 
 .room-code-row,
@@ -714,6 +734,20 @@ input {
 
 .copy-feedback {
   min-height: 20px;
+}
+
+.room-panel-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.room-leave-btn {
+  min-width: 170px;
+}
+
+.room-panel-note {
+  text-align: center;
 }
 
 .toggle-pill {
@@ -1081,9 +1115,9 @@ input {
 
 .cell.removed .apple {
   opacity: 0;
-  transform: scale(0.78);
-  transition-duration: 210ms;
-  transition-timing-function: cubic-bezier(0.2, 0.65, 0.22, 1);
+  transform: translate3d(0, 24%, 0) scale(0.74);
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.18, 0.72, 0.2, 1);
 }
 
 .board-footer {
@@ -1424,6 +1458,128 @@ body.lite-effects::after,
     padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
 
+  .room-overlay {
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+
+  .room-panel {
+    width: min(100%, 980px);
+    max-height: min(calc(var(--viewport-height) - 20px), 620px);
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 28px;
+  }
+
+  .room-panel-head {
+    gap: 6px;
+  }
+
+  .room-panel-kicker {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+  }
+
+  .room-panel-head h2 {
+    font-size: clamp(2rem, 5vw, 2.8rem);
+  }
+
+  .room-panel-head p {
+    font-size: 0.92rem;
+    line-height: 1.35;
+  }
+
+  .room-panel-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .room-code-chip-wrap,
+  .room-player-card {
+    gap: 8px;
+    min-height: 0;
+    padding: 12px 14px;
+    border-radius: 20px;
+  }
+
+  .room-chip-label,
+  .room-player-title {
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+  }
+
+  .room-code-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .room-code-box {
+    min-height: 58px;
+    padding: 0 16px;
+    border-radius: 18px;
+    font-size: clamp(2.1rem, 6vw, 2.8rem);
+    letter-spacing: 0.14em;
+  }
+
+  .room-copy-btn {
+    min-width: 90px;
+    min-height: 48px;
+    padding: 10px 16px;
+  }
+
+  .copy-feedback {
+    min-height: 16px;
+    font-size: 0.72rem;
+  }
+
+  .room-player-card {
+    max-height: 188px;
+    overflow: auto;
+  }
+
+  .room-player-list {
+    gap: 8px;
+  }
+
+  .room-player-item {
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .room-player-name {
+    font-size: 0.94rem;
+  }
+
+  .ready,
+  .not-ready {
+    min-width: 76px;
+    min-height: 32px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+  }
+
+  .room-panel-actions {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .room-panel-actions .big-btn,
+  .room-panel-actions .sub-btn {
+    min-height: 48px;
+  }
+
+  .room-leave-btn {
+    min-width: 142px;
+  }
+
+  .room-panel-note {
+    font-size: 0.76rem;
+    line-height: 1.3;
+  }
+
   .menu-utility {
     min-height: 0;
   }
@@ -1707,6 +1863,48 @@ body.lite-effects::after,
     padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
 
+  .room-panel {
+    max-height: min(calc(var(--viewport-height) - 16px), 560px);
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .room-panel-head h2 {
+    font-size: clamp(1.75rem, 4.8vw, 2.4rem);
+  }
+
+  .room-panel-head p {
+    font-size: 0.84rem;
+  }
+
+  .room-panel-grid {
+    gap: 10px;
+  }
+
+  .room-code-chip-wrap,
+  .room-player-card {
+    padding: 10px 12px;
+  }
+
+  .room-code-box {
+    min-height: 52px;
+    font-size: clamp(1.85rem, 5.4vw, 2.45rem);
+  }
+
+  .room-copy-btn,
+  .room-panel-actions .big-btn,
+  .room-panel-actions .sub-btn {
+    min-height: 44px;
+  }
+
+  .room-player-card {
+    max-height: 156px;
+  }
+
+  .room-player-item {
+    padding: 8px 10px;
+  }
+
   .main-menu,
   .mode-select {
     gap: 12px;
@@ -1795,6 +1993,10 @@ body.lite-effects::after,
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .room-panel-actions {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -183,7 +183,7 @@
     </div>
   </div>
 
-  <div id="roomOverlay" class="overlay hidden">
+  <div id="roomOverlay" class="overlay room-overlay hidden">
     <div class="panel room-panel">
       <div class="room-panel-head">
         <div class="room-panel-kicker">ONLINE ROOM</div>
@@ -191,23 +191,28 @@
         <p>같은 방, 같은 보드, 같은 타이밍으로 동시에 시작합니다.</p>
       </div>
 
-      <div class="room-code-chip-wrap">
-        <div class="room-chip-label">ROOM CODE</div>
-        <div class="room-code-row">
-          <div id="roomCodeBox" class="room-code-box">AAAAA</div>
-          <button id="copyRoomCodeBtn" class="sub-btn room-copy-btn" type="button">복사</button>
+      <div class="room-panel-grid">
+        <div class="room-code-chip-wrap">
+          <div class="room-chip-label">ROOM CODE</div>
+          <div class="room-code-row">
+            <div id="roomCodeBox" class="room-code-box">AAAAA</div>
+            <button id="copyRoomCodeBtn" class="sub-btn room-copy-btn" type="button">복사</button>
+          </div>
+          <div id="copyRoomCodeFeedback" class="small-note copy-feedback"></div>
         </div>
-        <div id="copyRoomCodeFeedback" class="small-note copy-feedback"></div>
+
+        <div class="room-player-card">
+          <div class="room-player-title">참가 플레이어</div>
+          <div id="roomPlayerList" class="room-player-list"></div>
+        </div>
       </div>
 
-      <div class="room-player-card">
-        <div class="room-player-title">참가 플레이어</div>
-        <div id="roomPlayerList" class="room-player-list"></div>
+      <div class="room-panel-actions">
+        <button id="readyBtn" class="big-btn primary-cta" type="button">준비하기</button>
+        <button id="leaveToLobbyBtn" class="sub-btn room-leave-btn" type="button">시작 화면으로</button>
       </div>
 
-      <button id="readyBtn" class="big-btn primary-cta" type="button">준비하기</button>
-      <button id="leaveToLobbyBtn" class="sub-btn room-leave-btn" type="button">시작 화면으로</button>
-      <p class="small-note">온라인은 싱글 규칙을 섞지 않고 서버 기준 보드로만 판정합니다.</p>
+      <p class="small-note room-panel-note">온라인은 싱글 규칙을 섞지 않고 서버 기준 보드로만 판정합니다.</p>
     </div>
   </div>
 
