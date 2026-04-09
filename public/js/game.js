@@ -1163,33 +1163,48 @@
       fragment.appendChild(ghost);
 
       const centerBias = (pos.col - ((state.COLS - 1) / 2)) / (((state.COLS - 1) / 2) || 1);
+      const riseY = clamp(
+        appleRect.height * (liteEffects ? 0.82 : 1.02),
+        liteEffects ? 20 : 28,
+        liteEffects ? 38 : 54
+      );
+      const prepY = clamp(appleRect.height * 0.14, 4, 9);
       const driftX = liteEffects
-        ? (centerBias * 12) + (Math.random() * 6 - 3)
-        : (centerBias * 20) + (Math.random() * 10 - 5);
-      const liftY = liteEffects ? 12 + (Math.random() * 8) : 18 + (Math.random() * 12);
-      const fallY = boardHeight + (liteEffects ? 84 : 126) + (Math.random() * (liteEffects ? 22 : 36));
-      const delay = liteEffects ? Math.min(order * 20, 96) : Math.min(order * 16, 112);
-      const duration = liteEffects ? 640 + Math.min(order * 24, 132) : 920 + Math.min(order * 24, 180);
+        ? (centerBias * 8) + (Math.random() * 4 - 2)
+        : (centerBias * 14) + (Math.random() * 8 - 4);
+      const fallY = boardHeight + appleRect.height + (liteEffects ? 74 : 112) + (Math.random() * (liteEffects ? 16 : 26));
+      const delay = liteEffects ? Math.min(order * 16, 72) : Math.min(order * 14, 96);
+      const duration = liteEffects ? 760 + Math.min(order * 22, 110) : 1060 + Math.min(order * 22, 168);
       const keyframes = liteEffects
         ? [
             {
               transform: "translate3d(0, 0, 0) scale(1)",
-              opacity: 1
-            },
-            {
-              transform: `translate3d(0px, ${(liftY * 0.12).toFixed(2)}px, 0) scale(0.95)`,
               opacity: 1,
-              offset: 0.1
+              easing: "cubic-bezier(0.28, 0.04, 0.4, 1)"
             },
             {
-              transform: `translate3d(0px, ${(-liftY * 0.52).toFixed(2)}px, 0) scale(1.01)`,
+              transform: `translate3d(0px, ${prepY.toFixed(2)}px, 0) scale(0.94)`,
               opacity: 1,
-              offset: 0.28
+              offset: 0.12,
+              easing: "cubic-bezier(0.18, 0.72, 0.22, 1)"
             },
             {
-              transform: `translate3d(${(driftX * 0.34).toFixed(2)}px, ${(fallY * 0.46).toFixed(2)}px, 0) scale(0.9)`,
-              opacity: 0.92,
-              offset: 0.66
+              transform: `translate3d(0px, ${(-riseY).toFixed(2)}px, 0) scale(1.02)`,
+              opacity: 1,
+              offset: 0.42,
+              easing: "cubic-bezier(0.14, 0.84, 0.24, 1)"
+            },
+            {
+              transform: `translate3d(${(driftX * 0.1).toFixed(2)}px, ${(-riseY * 0.96).toFixed(2)}px, 0) scale(1.01)`,
+              opacity: 0.99,
+              offset: 0.52,
+              easing: "cubic-bezier(0.3, 0, 0.8, 0.15)"
+            },
+            {
+              transform: `translate3d(${(driftX * 0.32).toFixed(2)}px, ${(fallY * 0.48).toFixed(2)}px, 0) scale(0.92)`,
+              opacity: 0.96,
+              offset: 0.8,
+              easing: "cubic-bezier(0.18, 0.58, 0.28, 1)"
             },
             {
               transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) scale(0.68)`,
@@ -1200,27 +1215,32 @@
         : [
             {
               transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)",
-              opacity: 1
-            },
-            {
-              transform: `translate3d(0px, ${(liftY * 0.16).toFixed(2)}px, 0) rotate(${(driftX * 0.02).toFixed(2)}deg) scale(0.95)`,
               opacity: 1,
-              offset: 0.08
+              easing: "cubic-bezier(0.28, 0.02, 0.38, 1)"
             },
             {
-              transform: `translate3d(0px, ${(-liftY).toFixed(2)}px, 0) rotate(${(driftX * 0.03).toFixed(2)}deg) scale(1.02)`,
+              transform: `translate3d(0px, ${prepY.toFixed(2)}px, 0) rotate(${(driftX * 0.02).toFixed(2)}deg) scale(0.94)`,
               opacity: 1,
-              offset: 0.24
+              offset: 0.1,
+              easing: "cubic-bezier(0.16, 0.72, 0.22, 1)"
             },
             {
-              transform: `translate3d(${(driftX * 0.22).toFixed(2)}px, ${(fallY * 0.2).toFixed(2)}px, 0) rotate(${(driftX * 0.08).toFixed(2)}deg) scale(0.98)`,
-              opacity: 0.96,
-              offset: 0.42
+              transform: `translate3d(0px, ${(-riseY).toFixed(2)}px, 0) rotate(${(driftX * 0.04).toFixed(2)}deg) scale(1.02)`,
+              opacity: 1,
+              offset: 0.4,
+              easing: "cubic-bezier(0.14, 0.82, 0.22, 1)"
             },
             {
-              transform: `translate3d(${(driftX * 0.52).toFixed(2)}px, ${(fallY * 0.62).toFixed(2)}px, 0) rotate(${(driftX * 0.14).toFixed(2)}deg) scale(0.88)`,
-              opacity: 0.82,
-              offset: 0.8
+              transform: `translate3d(${(driftX * 0.08).toFixed(2)}px, ${(-riseY * 0.97).toFixed(2)}px, 0) rotate(${(driftX * 0.05).toFixed(2)}deg) scale(1.01)`,
+              opacity: 0.99,
+              offset: 0.5,
+              easing: "cubic-bezier(0.28, 0, 0.82, 0.12)"
+            },
+            {
+              transform: `translate3d(${(driftX * 0.3).toFixed(2)}px, ${(fallY * 0.46).toFixed(2)}px, 0) rotate(${(driftX * 0.1).toFixed(2)}deg) scale(0.93)`,
+              opacity: 0.95,
+              offset: 0.78,
+              easing: "cubic-bezier(0.18, 0.58, 0.28, 1)"
             },
             {
               transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) rotate(${(driftX * 0.18).toFixed(2)}deg) scale(0.7)`,
@@ -1269,7 +1289,7 @@
         options: {
           delay,
           duration,
-          easing: liteEffects ? "cubic-bezier(0.18, 0.78, 0.28, 1)" : "cubic-bezier(0.18, 0.82, 0.24, 1)",
+          easing: "linear",
           fill: "forwards"
         }
       });
