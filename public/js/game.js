@@ -1104,10 +1104,11 @@
 
     const boardHeight = dom.boardFrame.clientHeight || dom.board.clientHeight || 600;
     const liteEffects = shouldUseLiteEffects();
-    const maxGhosts = Math.min(positions.length, liteEffects ? 10 : 24);
+    const maxGhosts = Math.min(positions.length, liteEffects ? 6 : 18);
     const sampleStep = Math.max(1, Math.ceil(positions.length / Math.max(1, maxGhosts)));
+    const sampled = [];
 
-    if (state.removalEffects.size > 32) {
+    if (state.removalEffects.size > (liteEffects ? 14 : 28)) {
       clearRemovalEffects();
     }
 
@@ -1120,8 +1121,28 @@
 
       const appleRect = apple.getBoundingClientRect();
       if (!appleRect.width || !appleRect.height) return;
+      sampled.push({
+        pos,
+        order: sampled.length,
+        appleRect
+      });
+    });
 
-      const ghost = apple.cloneNode(true);
+    if (sampled.length === 0) return;
+
+    const fragment = document.createDocumentFragment();
+    const plannedEffects = [];
+
+    sampled.forEach(({ pos, order, appleRect }) => {
+      const sourceApple = state.cellEls[pos.row]?.[pos.col]?._appleEl;
+      if (!sourceApple) return;
+
+      const ghost = sourceApple.cloneNode(true);
+      if (liteEffects) {
+        ghost.querySelector(".apple-glow")?.remove();
+        ghost.querySelector(".apple-notch")?.remove();
+      }
+
       ghost.setAttribute("aria-hidden", "true");
       Object.assign(ghost.style, {
         position: "absolute",
@@ -1134,23 +1155,21 @@
         transformOrigin: "50% 50%",
         transition: "none",
         willChange: "transform, opacity",
+        contain: "layout paint",
+        backfaceVisibility: "hidden",
         zIndex: "0"
       });
 
-      dropLayer.appendChild(ghost);
-
-      if (typeof ghost.animate !== "function") {
-        ghost.remove();
-        return;
-      }
+      fragment.appendChild(ghost);
 
       const centerBias = (pos.col - ((state.COLS - 1) / 2)) / (((state.COLS - 1) / 2) || 1);
       const driftX = liteEffects
-        ? (centerBias * 26) + (Math.random() * 10 - 5)
-        : (centerBias * 44) + (Math.random() * 16 - 8);
-      const liftY = liteEffects ? 14 + (Math.random() * 10) : 28 + (Math.random() * 14);
-      const fallY = boardHeight + (liteEffects ? 56 : 96) + (Math.random() * (liteEffects ? 22 : 36));
-      const duration = liteEffects ? 240 + Math.min(index * 8, 60) : 420 + Math.min(index * 12, 108);
+        ? (centerBias * 18) + (Math.random() * 8 - 4)
+        : (centerBias * 30) + (Math.random() * 14 - 7);
+      const liftY = liteEffects ? 10 + (Math.random() * 8) : 18 + (Math.random() * 10);
+      const fallY = boardHeight + (liteEffects ? 42 : 70) + (Math.random() * (liteEffects ? 18 : 32));
+      const delay = liteEffects ? Math.min(order * 16, 72) : Math.min(order * 12, 96);
+      const duration = liteEffects ? 380 + Math.min(order * 18, 84) : 560 + Math.min(order * 16, 120);
       const keyframes = liteEffects
         ? [
             {
@@ -1158,12 +1177,12 @@
               opacity: 1
             },
             {
-              transform: `translate3d(${(driftX * 0.35).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) scale(0.96)`,
-              opacity: 0.9,
-              offset: 0.32
+              transform: `translate3d(${(driftX * 0.12).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) scale(0.98)`,
+              opacity: 0.96,
+              offset: 0.22
             },
             {
-              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) scale(0.72)`,
+              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) scale(0.7)`,
               opacity: 0,
               offset: 1
             }
@@ -1174,31 +1193,25 @@
               opacity: 1
             },
             {
-              transform: `translate3d(${(driftX * 0.22).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) rotate(${(driftX * 0.08).toFixed(2)}deg) scale(1.02)`,
+              transform: `translate3d(${(driftX * 0.14).toFixed(2)}px, ${(-liftY).toFixed(2)}px, 0) rotate(${(driftX * 0.05).toFixed(2)}deg) scale(1.02)`,
               opacity: 0.98,
-              offset: 0.22
+              offset: 0.18
             },
             {
-              transform: `translate3d(${(driftX * 0.7).toFixed(2)}px, ${(fallY * 0.4).toFixed(2)}px, 0) rotate(${(driftX * 0.18).toFixed(2)}deg) scale(0.92)`,
-              opacity: 0.7,
+              transform: `translate3d(${(driftX * 0.46).toFixed(2)}px, ${(fallY * 0.38).toFixed(2)}px, 0) rotate(${(driftX * 0.12).toFixed(2)}deg) scale(0.94)`,
+              opacity: 0.78,
               offset: 0.62
             },
             {
-              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) rotate(${(driftX * 0.3).toFixed(2)}deg) scale(0.76)`,
+              transform: `translate3d(${driftX.toFixed(2)}px, ${fallY.toFixed(2)}px, 0) rotate(${(driftX * 0.2).toFixed(2)}deg) scale(0.74)`,
               opacity: 0,
               offset: 1
             }
           ];
 
-      const animation = ghost.animate(keyframes, {
-        duration,
-        easing: liteEffects ? "ease-in" : "cubic-bezier(0.2, 0.7, 0.15, 1)",
-        fill: "forwards"
-      });
-
       const effect = {
         ghost,
-        animation,
+        animation: null,
         cleanupTimerId: null
       };
 
@@ -1222,8 +1235,35 @@
         effect.ghost?.remove();
       };
 
-      effect.cleanupTimerId = window.setTimeout(cleanupEffect, duration + 180);
       state.removalEffects.add(effect);
+
+      if (typeof ghost.animate !== "function") {
+        cleanupEffect();
+        return;
+      }
+
+      plannedEffects.push({
+        effect,
+        cleanupEffect,
+        keyframes,
+        options: {
+          delay,
+          duration,
+          easing: liteEffects ? "cubic-bezier(0.18, 0.78, 0.28, 1)" : "cubic-bezier(0.18, 0.82, 0.24, 1)",
+          fill: "forwards"
+        }
+      });
+    });
+
+    dropLayer.appendChild(fragment);
+
+    plannedEffects.forEach(({ effect, cleanupEffect, keyframes, options }) => {
+      const animation = effect.ghost.animate(keyframes, options);
+      effect.animation = animation;
+      effect.cleanupTimerId = window.setTimeout(
+        cleanupEffect,
+        Number(options.delay || 0) + Number(options.duration || 0) + 220
+      );
 
       animation.finished
         .catch(() => {})

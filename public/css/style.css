@@ -169,29 +169,22 @@ input {
   z-index: 1;
   min-height: var(--viewport-height);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: clamp(18px, 2.2vw, 26px);
-  padding: max(20px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(12px, 1.8vw, 20px);
+  padding: max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
 }
 
-.menu-toolbar,
-.menu-profile-bar,
+.menu-utility {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .hud {
   border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow: var(--shadow-pill);
   backdrop-filter: blur(16px);
-}
-
-.menu-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-  justify-self: end;
-  min-width: min(100%, 420px);
 }
 
 .menu-toolbar-pill,
@@ -254,6 +247,14 @@ input {
   max-width: 860px;
 }
 
+.main-menu-title-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 16px 20px;
+  flex-wrap: wrap;
+}
+
 .main-menu-kicker,
 .mode-select-eyebrow,
 .settings-kicker,
@@ -270,6 +271,48 @@ input {
   line-height: 0.95;
   font-weight: 900;
   letter-spacing: -0.05em;
+}
+
+.nickname-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 14px 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(46, 104, 78, 0.12);
+  box-shadow: var(--shadow-pill);
+}
+
+.nickname-badge:focus-within {
+  border-color: rgba(71, 177, 157, 0.36);
+  box-shadow: 0 10px 22px rgba(76, 117, 93, 0.14);
+}
+
+.nickname-badge-label {
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: rgba(46, 68, 56, 0.56);
+  white-space: nowrap;
+}
+
+.nickname-input {
+  width: clamp(96px, 15vw, 150px);
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: clamp(1rem, 1.1vw, 1.08rem);
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.nickname-input::placeholder {
+  color: rgba(46, 68, 56, 0.36);
 }
 
 .main-menu-subtitle,
@@ -567,48 +610,6 @@ input {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-weight: 800;
-}
-
-.menu-profile-bar {
-  display: grid;
-  grid-template-columns: minmax(220px, 320px) 1fr;
-  gap: clamp(18px, 2vw, 26px);
-  align-items: center;
-  padding: clamp(18px, 2vw, 26px);
-}
-
-.menu-profile-input,
-.menu-profile-summary {
-  display: grid;
-  min-width: 0;
-  gap: 12px;
-}
-
-.menu-profile-copy {
-  min-width: 0;
-  font-size: 1rem;
-  color: var(--text-soft);
-}
-
-.menu-profile-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.profile-stat-card {
-  display: grid;
-  gap: 8px;
-  min-height: 92px;
-  padding: 16px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(41, 82, 61, 0.08);
-}
-
-.profile-stat-card strong {
-  font-size: clamp(1.34rem, 2vw, 1.9rem);
-  line-height: 1;
 }
 
 .room-panel,
@@ -916,6 +917,7 @@ input {
   border-radius: clamp(32px, 5vw, 42px);
   overflow: hidden;
   isolation: isolate;
+  contain: layout paint;
   background: linear-gradient(180deg, rgba(47, 168, 86, 0.95), rgba(34, 139, 78, 0.94));
   box-shadow: 0 28px 54px rgba(49, 117, 79, 0.22);
 }
@@ -982,7 +984,7 @@ input {
   width: 100%;
   height: 100%;
   transform-origin: 50% 65%;
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition: transform 140ms ease, opacity 180ms ease;
 }
 
 .apple-body,
@@ -1079,7 +1081,9 @@ input {
 
 .cell.removed .apple {
   opacity: 0;
-  transform: scale(0.82);
+  transform: scale(0.78);
+  transition-duration: 210ms;
+  transition-timing-function: cubic-bezier(0.2, 0.65, 0.22, 1);
 }
 
 .board-footer {
@@ -1333,10 +1337,20 @@ body.lite-effects::after,
   filter: none;
 }
 
+.lite-effects .apple-glow {
+  display: none;
+}
+
+.lite-effects .apple-body {
+  box-shadow: inset 0 -4px 7px rgba(198, 51, 30, 0.12);
+}
+
+.lite-effects .apple-num {
+  text-shadow: none;
+}
+
 .lite-effects .panel,
 .lite-effects .game-over-card,
-.lite-effects .menu-toolbar,
-.lite-effects .menu-profile-bar,
 .lite-effects .hud,
 .lite-effects .board-footer {
   backdrop-filter: none;
@@ -1357,12 +1371,17 @@ body.lite-effects::after,
 
 @media (max-width: 960px) and (orientation: portrait), (max-width: 960px) and (pointer: fine) {
   .menu-scene {
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .main-menu {
     align-content: start;
     padding-top: 8px;
+  }
+
+  .main-menu-title-wrap {
+    flex-direction: column;
+    align-items: center;
   }
 
   .main-menu-title {
@@ -1371,18 +1390,12 @@ body.lite-effects::after,
 
   .main-menu-actions,
   .mode-card-grid,
-  .online-card-grid,
-  .menu-profile-stats {
+  .online-card-grid {
     grid-template-columns: 1fr;
   }
 
-  .menu-toolbar {
-    justify-self: stretch;
-    min-width: 0;
-  }
-
-  .menu-profile-bar {
-    grid-template-columns: 1fr;
+  .menu-utility {
+    justify-content: flex-end;
   }
 
   .mode-select-head,
@@ -1407,18 +1420,14 @@ body.lite-effects::after,
   .menu-scene {
     height: var(--viewport-height);
     max-height: var(--viewport-height);
-    gap: 12px;
+    gap: 10px;
     padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
 
-  .menu-toolbar {
-    justify-self: stretch;
-    width: 100%;
-    min-width: 0;
-    padding: 10px 12px;
+  .menu-utility {
+    min-height: 0;
   }
 
-  .menu-toolbar-pill,
   .mode-select-pill {
     min-height: 34px;
     padding: 8px 14px;
@@ -1435,6 +1444,10 @@ body.lite-effects::after,
     max-width: min(100%, 780px);
   }
 
+  .main-menu-title-wrap {
+    gap: 10px 12px;
+  }
+
   .main-menu-kicker,
   .mode-select-eyebrow {
     font-size: 0.72rem;
@@ -1448,14 +1461,12 @@ body.lite-effects::after,
   .main-menu-subtitle,
   .mode-select-subtitle,
   .mode-card-description,
-  .small-note,
-  .menu-profile-copy {
+  .small-note {
     font-size: 0.86rem;
     line-height: 1.35;
   }
 
-  .mode-select-subtitle,
-  .menu-profile-copy {
+  .mode-select-subtitle {
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -1466,8 +1477,21 @@ body.lite-effects::after,
     -webkit-box-orient: vertical;
   }
 
-  .menu-profile-copy {
-    white-space: nowrap;
+  .nickname-badge {
+    min-height: 42px;
+    padding: 5px 10px 5px 12px;
+    gap: 8px;
+  }
+
+  .nickname-badge-label {
+    font-size: 0.62rem;
+    letter-spacing: 0.1em;
+  }
+
+  .nickname-input {
+    width: 92px;
+    min-height: 24px;
+    font-size: 0.88rem;
   }
 
   .main-menu-actions {
@@ -1565,26 +1589,6 @@ body.lite-effects::after,
   .hud-text-btn {
     min-height: 46px;
     padding: 10px 18px;
-  }
-
-  .menu-profile-bar {
-    grid-template-columns: minmax(160px, 220px) 1fr;
-    gap: 10px;
-    padding: 10px 12px;
-  }
-
-  .menu-profile-input,
-  .menu-profile-summary {
-    gap: 6px;
-  }
-
-  .menu-profile-stats {
-    display: none;
-  }
-
-  .input {
-    min-height: 44px;
-    padding-inline: 14px;
   }
 
   .app {
@@ -1717,6 +1721,16 @@ body.lite-effects::after,
     font-size: 0.8rem;
   }
 
+  .nickname-badge {
+    min-height: 38px;
+    padding: 4px 9px 4px 10px;
+  }
+
+  .nickname-input {
+    width: 84px;
+    font-size: 0.82rem;
+  }
+
   .hero-action {
     min-height: 74px;
     padding: 12px 14px;
@@ -1757,15 +1771,6 @@ body.lite-effects::after,
     font-size: 0.8rem;
   }
 
-  .menu-profile-bar {
-    grid-template-columns: minmax(140px, 200px) 1fr;
-  }
-
-  .menu-profile-copy {
-    font-size: 0.78rem;
-    white-space: nowrap;
-  }
-
   .time-chip {
     grid-template-columns: auto auto minmax(92px, 1fr);
   }
@@ -1774,8 +1779,7 @@ body.lite-effects::after,
 @media (max-width: 720px) and (orientation: portrait), (max-width: 720px) and (pointer: fine) {
   .main-menu-actions,
   .mode-card-grid,
-  .online-card-grid,
-  .menu-profile-stats {
+  .online-card-grid {
     grid-template-columns: 1fr;
   }
 

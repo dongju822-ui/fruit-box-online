@@ -21,15 +21,21 @@
     <div class="menu-backdrop" aria-hidden="true"></div>
 
     <div class="menu-scene">
-      <div class="menu-toolbar">
-        <div id="dailyStatusPill" class="menu-toolbar-pill">오늘의 퍼즐 준비 중</div>
+      <div class="menu-utility">
         <button id="openSettingsBtn" class="menu-icon-btn" type="button" aria-label="설정">⚙</button>
       </div>
 
       <section id="mainHomeView" class="main-menu">
         <div class="main-menu-copy">
           <div class="main-menu-kicker">MOBILE CASUAL MATCH</div>
-          <h1 class="main-menu-title">사과게임</h1>
+          <div class="main-menu-title-wrap">
+            <h1 class="main-menu-title">사과게임</h1>
+
+            <label class="nickname-badge" for="nameInput">
+              <span class="nickname-badge-label">닉네임</span>
+              <input id="nameInput" class="input nickname-input" maxlength="12" placeholder="나" />
+            </label>
+          </div>
           <p class="main-menu-subtitle">
             같은 9x18 보드 규칙으로 혼자 플레이하거나 친구와 온라인 대전을 시작하세요.
           </p>
@@ -174,36 +180,6 @@
           <p id="lobbyError" class="small-note error-note"></p>
         </section>
       </section>
-
-      <div class="menu-profile-bar">
-        <div class="menu-profile-input">
-          <label class="input-label" for="nameInput">닉네임</label>
-          <input id="nameInput" class="input" maxlength="12" placeholder="닉네임 입력" />
-        </div>
-
-        <div class="menu-profile-summary">
-          <div id="singleRecordsPreview" class="menu-profile-copy">최고 기록을 불러오는 중...</div>
-
-          <div class="menu-profile-stats">
-            <div class="profile-stat-card">
-              <span>최고 점수</span>
-              <strong id="bestScoreValue">0</strong>
-            </div>
-            <div class="profile-stat-card">
-              <span>최고 콤보</span>
-              <strong id="bestComboValue">x0</strong>
-            </div>
-            <div class="profile-stat-card">
-              <span>클리어율</span>
-              <strong id="bestClearValue">0%</strong>
-            </div>
-            <div class="profile-stat-card">
-              <span>퍼펙트</span>
-              <strong id="perfectClearValue">0회</strong>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 

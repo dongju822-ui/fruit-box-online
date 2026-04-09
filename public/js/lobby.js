@@ -92,16 +92,10 @@
       singleDailyBtn: document.getElementById("singleDailyBtn"),
       dailyModeCard: document.getElementById("dailyModeCard"),
       dailyModeMeta: document.getElementById("dailyModeMeta"),
-      dailyStatusPill: document.getElementById("dailyStatusPill"),
       dailyPlayedBadge: document.getElementById("dailyPlayedBadge"),
-      bestScoreValue: document.getElementById("bestScoreValue"),
-      bestComboValue: document.getElementById("bestComboValue"),
-      bestClearValue: document.getElementById("bestClearValue"),
-      perfectClearValue: document.getElementById("perfectClearValue"),
       classicBestValue: document.getElementById("classicBestValue"),
       timeAttackBestValue: document.getElementById("timeAttackBestValue"),
       dailyBestValue: document.getElementById("dailyBestValue"),
-      singleRecordsPreview: document.getElementById("singleRecordsPreview"),
       lobbyError: document.getElementById("lobbyError"),
       copyRoomCodeBtn: document.getElementById("copyRoomCodeBtn"),
       roomCodeBox: document.getElementById("roomCodeBox"),
@@ -186,7 +180,7 @@
         dom.modeSelectEyebrow.textContent = "ONLINE MATCH";
         dom.modeSelectTitle.textContent = "대전 하기";
         dom.modeSelectSubtitle.textContent = "같은 방, 같은 보드, 같은 타이밍으로 친구와 실시간 대전을 시작하세요.";
-        dom.dailyPlayedBadge.textContent = "ROOM FLOW";
+        if (dom.dailyPlayedBadge) dom.dailyPlayedBadge.textContent = "ROOM FLOW";
         return;
       }
 
@@ -212,26 +206,15 @@
       const menuData = App.game.getMenuData();
       const { records, dailyChallenge, hasPlayedDaily } = menuData;
 
-      dom.bestScoreValue.textContent = String(records.bestScore);
-      dom.bestComboValue.textContent = `x${records.bestCombo}`;
-      dom.bestClearValue.textContent = `${records.bestClearRate}%`;
-      dom.perfectClearValue.textContent = `${records.perfectClearCount}회`;
-
       dom.classicBestValue.textContent = String(records.bestScore);
       dom.timeAttackBestValue.textContent = String(records.bestScore);
       dom.dailyBestValue.textContent = hasPlayedDaily ? "DONE" : "TODAY";
 
       dom.dailyModeMeta.textContent = `${dailyChallenge.label} · 오늘 모두 같은 보드`;
-      dom.dailyStatusPill.textContent = hasPlayedDaily
-        ? `${dailyChallenge.label} · 완료`
-        : `${dailyChallenge.label} · 데일리 오픈`;
 
-      if (menuView !== "online") {
+      if (menuView !== "online" && dom.dailyPlayedBadge) {
         dom.dailyPlayedBadge.textContent = hasPlayedDaily ? "오늘 플레이함" : "오늘 미플레이";
       }
-
-      dom.singleRecordsPreview.textContent =
-        `최고 점수 ${records.bestScore} · 최고 콤보 x${records.bestCombo} · 오늘의 퍼즐 ${dailyChallenge.label}`;
     }
 
     async function fetchDailyChallenge() {
