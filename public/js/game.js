@@ -267,6 +267,11 @@
     dom.resultModeBadge = document.getElementById("resultModeBadge");
     dom.resultStatePill = document.getElementById("resultStatePill");
     dom.resultMeta = document.getElementById("resultMeta");
+    dom.resultMeName = document.getElementById("resultMeName");
+    dom.resultOpponentName = document.getElementById("resultOpponentName");
+    dom.resultMeOutcome = document.getElementById("resultMeOutcome");
+    dom.resultOpponentOutcome = document.getElementById("resultOpponentOutcome");
+    dom.resultStreakBadge = document.getElementById("resultStreakBadge");
     dom.finalScore = document.getElementById("finalScore");
     dom.resultStat1Label = document.getElementById("resultStat1Label");
     dom.resultStat2Label = document.getElementById("resultStat2Label");
@@ -482,14 +487,15 @@
   function updateModeUI() {
     if (dom.modeHint) {
       if (state.mode === "menu") {
-        dom.modeHint.textContent = "공통 9x18 보드";
+        dom.modeHint.textContent = "모드를 고르고 바로 시작하세요";
       } else if (isSingleMode()) {
-        const base = `${state.singleConfig.label} · 9x18`;
         dom.modeHint.textContent = state.singleConfig.modeId === "timeattack"
-          ? `${base} · ${state.singleConfig.duration}초`
-          : base;
+          ? `${state.singleConfig.label} · ${state.singleConfig.duration}초`
+          : state.singleConfig.label;
       } else {
-        dom.modeHint.textContent = "온라인 1:1 · 공통 9x18 보드";
+        dom.modeHint.textContent = state.myRoomCode
+          ? `온라인 대전 · ROOM ${state.myRoomCode}`
+          : "온라인 대전";
       }
     }
 
@@ -1196,6 +1202,12 @@
 
   function applyResultScreen(config) {
     const resultClass = config.resultClass || "result-neutral";
+    const meName = sanitizeName(config.meName || state.myName, "나");
+    const opponentName = sanitizeName(config.opponentName, config.showRematch ? "상대" : "기록");
+    const meOutcome = String(config.meOutcome || (config.showRematch ? "PLAYER" : "FINISH"));
+    const opponentOutcome = String(config.opponentOutcome || (config.showRematch ? "OPPONENT" : "RECORD"));
+    const streakText = String(config.streakText || "");
+
     dom.resultCard.className = `game-over-card ${resultClass}`;
     dom.resultCard.dataset.flow = config.showRematch ? "online" : "single";
     dom.resultModeBadge.textContent = config.modeBadge || "RESULT";
@@ -1204,6 +1216,12 @@
     dom.resultTitle.textContent = config.title || "게임 종료";
     dom.resultText.textContent = config.text || "";
     dom.resultMeta.textContent = config.meta || "";
+    dom.resultMeName.textContent = meName;
+    dom.resultOpponentName.textContent = opponentName;
+    dom.resultMeOutcome.textContent = meOutcome;
+    dom.resultOpponentOutcome.textContent = opponentOutcome;
+    dom.resultStreakBadge.textContent = streakText;
+    dom.resultStreakBadge.classList.toggle("hidden", !streakText);
     dom.resultStat1Label.textContent = config.stat1Label || "점수";
     dom.finalScore.textContent = String(config.stat1Value ?? 0);
     dom.resultStat2Label.textContent = config.stat2Label || "최고 콤보";
@@ -1429,12 +1447,17 @@
 
     showGameOver({
       resultClass,
-      modeBadge: state.singleConfig.label.toUpperCase(),
+      modeBadge: state.singleConfig.label,
       stateBadge: reason === "perfectClear" ? "PERFECT" : "RESULT",
       icon,
       title,
       text,
       meta: notes.length ? notes.join(" · ") : "싱글 최고기록은 시작 화면에도 바로 반영됩니다.",
+      meName: state.myName || "나",
+      opponentName: reason === "perfectClear" ? "퍼펙트" : "오늘 기록",
+      meOutcome: reason === "perfectClear" ? "CLEAR" : "FINISH",
+      opponentOutcome: notes.length ? "NEW" : "DONE",
+      streakText: reason === "perfectClear" ? "보너스 +80" : "",
       stat1Label: "점수",
       stat1Value: summary.score,
       stat2Label: "최고 콤보",
@@ -1732,6 +1755,8 @@
     let title = "무승부";
     let text = "점수가 같아서 비겼습니다.";
     let sound = "draw";
+    let meOutcome = "DRAW";
+    let opponentOutcome = "DRAW";
 
     if (!result.draw && winnerEntry?.socketId === state.mySocketId) {
       resultClass = "result-win";
@@ -1739,12 +1764,16 @@
       title = "승리";
       text = "상대보다 높은 점수로 이번 판을 가져왔어요.";
       sound = "win";
+      meOutcome = "WIN";
+      opponentOutcome = "LOSE";
     } else if (!result.draw && winnerEntry) {
       resultClass = "result-lose";
       icon = "⚑";
       title = "패배";
       text = `${winnerEntry.name} 플레이어가 이번 판에서 앞섰습니다.`;
       sound = "lose";
+      meOutcome = "LOSE";
+      opponentOutcome = "WIN";
     }
 
     showGameOver({
@@ -1755,6 +1784,10 @@
       title,
       text,
       meta: "둘 다 재대결을 누르면 같은 방에서 다음 판이 시작됩니다.",
+      meName: myScoreEntry?.name || state.myName || "나",
+      opponentName: opponentEntry?.name || "상대",
+      meOutcome,
+      opponentOutcome,
       stat1Label: "내 점수",
       stat1Value: myScoreEntry?.score || 0,
       stat2Label: "상대 점수",
@@ -1803,6 +1836,7 @@
     state.myName = sanitizeName(name, "나");
     state.myRoomCode = roomCode;
     updateScoreboardLabels();
+    updateModeUI();
   }
 
   function enterOnlineLobby() {

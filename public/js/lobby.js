@@ -54,10 +54,18 @@
     const dom = {
       startOverlay: document.getElementById("startOverlay"),
       roomOverlay: document.getElementById("roomOverlay"),
-      singleMenuBtn: document.getElementById("singleMenuBtn"),
-      onlineMenuBtn: document.getElementById("onlineMenuBtn"),
+      settingsOverlay: document.getElementById("settingsOverlay"),
+      mainHomeView: document.getElementById("mainHomeView"),
+      modeSelectView: document.getElementById("modeSelectView"),
       singlePanel: document.getElementById("singlePanel"),
       onlinePanel: document.getElementById("onlinePanel"),
+      singleMenuBtn: document.getElementById("singleMenuBtn"),
+      dailyMenuBtn: document.getElementById("dailyMenuBtn"),
+      onlineMenuBtn: document.getElementById("onlineMenuBtn"),
+      menuBackBtn: document.getElementById("menuBackBtn"),
+      modeSelectEyebrow: document.getElementById("modeSelectEyebrow"),
+      modeSelectTitle: document.getElementById("modeSelectTitle"),
+      modeSelectSubtitle: document.getElementById("modeSelectSubtitle"),
       nameInput: document.getElementById("nameInput"),
       roomCodeInput: document.getElementById("roomCodeInput"),
       createRoomBtn: document.getElementById("createRoomBtn"),
@@ -73,7 +81,6 @@
       openSettingsBtn: document.getElementById("openSettingsBtn"),
       gameSettingsBtn: document.getElementById("gameSettingsBtn"),
       closeSettingsBtn: document.getElementById("closeSettingsBtn"),
-      settingsOverlay: document.getElementById("settingsOverlay"),
       bgmToggleBtn: document.getElementById("bgmToggleBtn"),
       sfxToggleBtn: document.getElementById("sfxToggleBtn"),
       bgmVolumeSlider: document.getElementById("bgmVolumeSlider"),
@@ -83,13 +90,17 @@
       singleClassicBtn: document.getElementById("singleClassicBtn"),
       singleTimeAttackBtn: document.getElementById("singleTimeAttackBtn"),
       singleDailyBtn: document.getElementById("singleDailyBtn"),
+      dailyModeCard: document.getElementById("dailyModeCard"),
       dailyModeMeta: document.getElementById("dailyModeMeta"),
+      dailyStatusPill: document.getElementById("dailyStatusPill"),
+      dailyPlayedBadge: document.getElementById("dailyPlayedBadge"),
       bestScoreValue: document.getElementById("bestScoreValue"),
       bestComboValue: document.getElementById("bestComboValue"),
       bestClearValue: document.getElementById("bestClearValue"),
       perfectClearValue: document.getElementById("perfectClearValue"),
-      dailyStatusPill: document.getElementById("dailyStatusPill"),
-      dailyPlayedBadge: document.getElementById("dailyPlayedBadge"),
+      classicBestValue: document.getElementById("classicBestValue"),
+      timeAttackBestValue: document.getElementById("timeAttackBestValue"),
+      dailyBestValue: document.getElementById("dailyBestValue"),
       singleRecordsPreview: document.getElementById("singleRecordsPreview"),
       lobbyError: document.getElementById("lobbyError"),
       copyRoomCodeBtn: document.getElementById("copyRoomCodeBtn"),
@@ -98,15 +109,7 @@
     };
 
     let copyFeedbackTimer = null;
-
-    function setActivePanel(panel) {
-      const singleActive = panel === "single";
-      dom.singlePanel.classList.toggle("hidden", !singleActive);
-      dom.onlinePanel.classList.toggle("hidden", singleActive);
-      dom.singleMenuBtn.classList.toggle("active", singleActive);
-      dom.onlineMenuBtn.classList.toggle("active", !singleActive);
-      if (dom.lobbyError) dom.lobbyError.textContent = "";
-    }
+    let menuView = "home";
 
     function syncSettingsUi() {
       const settings = App.audio.getSettings();
@@ -155,6 +158,53 @@
       if (storedRoomCode) dom.roomCodeInput.value = storedRoomCode;
     }
 
+    function setMenuView(nextView) {
+      menuView = nextView;
+
+      const onHome = nextView === "home";
+      const onOnline = nextView === "online";
+      const onDaily = nextView === "daily";
+      const onSingle = nextView === "single" || onDaily;
+
+      dom.mainHomeView.classList.toggle("hidden", !onHome);
+      dom.modeSelectView.classList.toggle("hidden", onHome);
+      dom.singlePanel.classList.toggle("hidden", !onSingle);
+      dom.onlinePanel.classList.toggle("hidden", !onOnline);
+
+      dom.modeSelectView.dataset.section = nextView;
+      dom.dailyModeCard.classList.toggle("featured-daily-card", onDaily);
+
+      if (onHome) {
+        showLobbyError("");
+        return;
+      }
+
+      if (onOnline) {
+        dom.modeSelectEyebrow.textContent = "ONLINE MATCH";
+        dom.modeSelectTitle.textContent = "대전 하기";
+        dom.modeSelectSubtitle.textContent = "같은 방, 같은 보드, 같은 타이밍으로 친구와 실시간 대전을 시작하세요.";
+        dom.dailyPlayedBadge.textContent = "ROOM FLOW";
+        return;
+      }
+
+      dom.modeSelectEyebrow.textContent = onDaily ? "DAILY CHALLENGE" : "SOLO MODES";
+      dom.modeSelectTitle.textContent = onDaily ? "일일 도전" : "혼자하기";
+      dom.modeSelectSubtitle.textContent = onDaily
+        ? "오늘 모두가 같은 시드 보드에 도전합니다. 기록은 매일 갱신됩니다."
+        : "클래식, 타임어택, 오늘의 퍼즐 중 원하는 카드로 바로 시작하세요.";
+    }
+
+    function showHomeView() {
+      setMenuView("home");
+    }
+
+    function showModeSelect(section) {
+      App.audio.ensureAudio();
+      App.audio.playUiSound();
+      setMenuView(section);
+      renderMenuData();
+    }
+
     function renderMenuData() {
       const menuData = App.game.getMenuData();
       const { records, dailyChallenge, hasPlayedDaily } = menuData;
@@ -163,12 +213,22 @@
       dom.bestComboValue.textContent = `x${records.bestCombo}`;
       dom.bestClearValue.textContent = `${records.bestClearRate}%`;
       dom.perfectClearValue.textContent = `${records.perfectClearCount}회`;
+
+      dom.classicBestValue.textContent = String(records.bestScore);
+      dom.timeAttackBestValue.textContent = String(records.bestScore);
+      dom.dailyBestValue.textContent = hasPlayedDaily ? "DONE" : "TODAY";
+
       dom.dailyModeMeta.textContent = `${dailyChallenge.label} · 오늘 모두 같은 보드`;
       dom.dailyStatusPill.textContent = hasPlayedDaily
-        ? `${dailyChallenge.label} · 플레이함`
-        : `${dailyChallenge.label} · 데일리 시드`;
-      dom.dailyPlayedBadge.textContent = hasPlayedDaily ? "오늘 플레이함" : "오늘 미플레이";
-      dom.singleRecordsPreview.textContent = `최고 점수 ${records.bestScore} · 최고 콤보 x${records.bestCombo} · 데일리 ${dailyChallenge.label}`;
+        ? `${dailyChallenge.label} · 완료`
+        : `${dailyChallenge.label} · 데일리 오픈`;
+
+      if (menuView !== "online") {
+        dom.dailyPlayedBadge.textContent = hasPlayedDaily ? "오늘 플레이함" : "오늘 미플레이";
+      }
+
+      dom.singleRecordsPreview.textContent =
+        `최고 점수 ${records.bestScore} · 최고 콤보 x${records.bestCombo} · 오늘의 퍼즐 ${dailyChallenge.label}`;
     }
 
     async function fetchDailyChallenge() {
@@ -182,9 +242,10 @@
 
     function returnToStartOverlay() {
       App.game.resetToStartOverlay();
-      setActivePanel("single");
+      showHomeView();
       renderMenuData();
       closeSettings();
+      showLobbyError("");
       App.game.refreshViewportUi?.();
     }
 
@@ -279,6 +340,7 @@
       if (copyFeedbackTimer) {
         window.clearTimeout(copyFeedbackTimer);
       }
+
       dom.copyRoomCodeFeedback.textContent = succeeded ? "복사됨" : "복사 실패";
       copyFeedbackTimer = window.setTimeout(() => {
         dom.copyRoomCodeFeedback.textContent = "";
@@ -286,21 +348,27 @@
     }
 
     syncInputsFromStorage();
+    showHomeView();
     renderMenuData();
-    setActivePanel("single");
     syncSettingsUi();
     fetchDailyChallenge().finally(renderMenuData);
 
     dom.singleMenuBtn.addEventListener("click", () => {
-      App.audio.ensureAudio();
-      App.audio.playUiSound();
-      setActivePanel("single");
+      showModeSelect("single");
+    });
+
+    dom.dailyMenuBtn.addEventListener("click", () => {
+      showModeSelect("daily");
     });
 
     dom.onlineMenuBtn.addEventListener("click", () => {
+      showModeSelect("online");
+    });
+
+    dom.menuBackBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
       App.audio.playUiSound();
-      setActivePanel("online");
+      showHomeView();
     });
 
     dom.nameInput.addEventListener("input", () => {
@@ -314,14 +382,24 @@
     });
 
     dom.nameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        if (!dom.onlinePanel.classList.contains("hidden")) {
-          triggerCreateRoom();
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+
+      if (menuView === "online") {
+        if (getRoomCode()) {
+          triggerJoinRoom();
         } else {
-          startSingle("classic");
+          triggerCreateRoom();
         }
+        return;
       }
+
+      if (menuView === "single" || menuView === "daily") {
+        startSingle(menuView === "daily" ? "daily" : "classic");
+        return;
+      }
+
+      showModeSelect("single");
     });
 
     dom.roomCodeInput.addEventListener("keydown", (event) => {
@@ -356,6 +434,11 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !dom.settingsOverlay.classList.contains("hidden")) {
         closeSettings();
+        return;
+      }
+
+      if (event.key === "Escape" && !dom.startOverlay.classList.contains("hidden") && menuView !== "home") {
+        showHomeView();
       }
     });
 
@@ -363,6 +446,7 @@
       const primeAudio = () => {
         App.audio.ensureAudio();
       };
+
       slider.addEventListener("pointerdown", primeAudio, { passive: true });
       slider.addEventListener("touchstart", primeAudio, { passive: true });
       slider.addEventListener("focus", primeAudio);
@@ -371,16 +455,14 @@
     dom.bgmToggleBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
       App.audio.playUiSound();
-      const next = !App.audio.getSettings().bgmEnabled;
-      App.audio.setBgmEnabled(next);
+      App.audio.setBgmEnabled(!App.audio.getSettings().bgmEnabled);
       syncSettingsUi();
     });
 
     dom.sfxToggleBtn.addEventListener("click", () => {
       App.audio.ensureAudio();
       App.audio.playUiSound();
-      const next = !App.audio.getSettings().sfxEnabled;
-      App.audio.setSfxEnabled(next);
+      App.audio.setSfxEnabled(!App.audio.getSettings().sfxEnabled);
       syncSettingsUi();
     });
 
@@ -403,6 +485,7 @@
       handleSfxVolume();
       App.audio.playSelectSound();
     });
+
     dom.sfxVolumeSlider.addEventListener("change", () => {
       handleSfxVolume();
       App.audio.playClearPreviewSound({ bypassThrottle: true });
